@@ -1,0 +1,69 @@
+# Architecture contracts for import-linter. Paste into pyproject.toml and rename
+# `myapp` and the module names. Each contract is one decision from
+# DESIGNING_THE_SHAPE.md written down so a tool can guard it.
+#
+# Existing project with violations? Do NOT weaken the contract. List today's illegal
+# imports under `ignore_imports` (that is import-linter's own baseline), and keep
+# `unmatched_ignore_imports_alerting = "error"` (the default): once an import is fixed,
+# its ignore line must be deleted, so it can't come back.
+
+[tool.importlinter]
+root_package = "myapp"
+# Lets contracts mention third-party packages (for the "SDK only in its adapter" rule).
+include_external_packages = true
+
+# 1. Layers: dependencies point one way, from entry points down to the core.
+[[tool.importlinter.contracts]]
+id = "layers"
+name = "Layers: cli -> features -> core -> config"
+type = "layers"
+containers = ["myapp"]
+layers = [
+    "cli",                         # entry points: parse input, call features
+    "api | worker",                # independent front-ends (`|` = may not import each other)
+    "billing | users",             # features
+    "storage | llm",               # adapters for the outside world
+    "domain",                      # plain rules and data, no I/O
+    "config",                      # settings; imports nothing from myapp
+]
+exhaustive = true                  # a new top-level module fails until you place it in a layer
+broken_contract_guidance = """
+A lower layer imported a higher one. Move the shared code down a layer,
+or pass the dependency in from the caller. Don't add ignore_imports for new code.
+"""
+
+# 2. Features don't reach into each other's internals.
+[[tool.importlinter.contracts]]
+id = "features-independent"
+name = "Features are independent"
+type = "independence"
+modules = ["myapp.billing", "myapp.users"]
+
+# 3. Encapsulation: modules named _something are private to their package.
+[[tool.importlinter.contracts]]
+id = "private-modules"
+name = "Private modules (_name.py) are only imported inside their own package"
+type = "private_modules"
+
+# 4. Public interface: only the package itself may import its internals.
+[[tool.importlinter.contracts]]
+id = "storage-interface"
+name = "Everyone goes through myapp.storage, not its internals"
+type = "protected"
+protected_modules = ["myapp.storage.sql", "myapp.storage.models"]
+allowed_importers = ["myapp.storage"]
+
+# 5. Ports & adapters: a third-party SDK lives behind one adapter.
+[[tool.importlinter.contracts]]
+id = "sdk-in-adapter"
+name = "The OpenAI SDK is only imported by myapp.llm"
+type = "protected"
+protected_modules = ["openai"]
+allowed_importers = ["myapp.llm"]
+
+# 6. No cycles between sibling modules inside any sub-package.
+[[tool.importlinter.contracts]]
+id = "no-cycles"
+name = "No circular imports between sibling modules"
+type = "acyclic_siblings"
+ancestors = ["myapp.*"]

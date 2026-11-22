@@ -1,0 +1,56 @@
+# Copy to .github/workflows/code-shape.yml.
+# - On every PR: ENFORCE mode. Fails only on NEW or WORSE violations (the baseline
+#   holds the old ones), and when an improvement isn't locked into the baseline.
+# - Weekly and on demand: REPORT mode with git-history trends, uploaded as an artifact.
+name: Code shape
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  check:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The project must be installed too: mypy and deptry need its dependencies.
+      # KIT: a path if you vendored the kit (e.g. tools/code-shape-kit). To install from
+      # GitHub instead, replace the pip line with:
+      #   pip install -e . "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.1.0"
+      - name: Install project and code-shape-kit
+        env:
+          KIT: tools/code-shape-kit
+        run: pip install -e . "${KIT}[tools]"
+      - name: Code shape gates
+        run: code-shape check
+
+  report:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history for change coupling and trends
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install project and code-shape-kit
+        env:
+          KIT: tools/code-shape-kit
+        run: pip install -e . "${KIT}[tools]"
+      - name: Code shape report
+        run: code-shape report --trend 8 --out code-shape-report.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-shape-report
+          path: code-shape-report.md
+      - name: Show report in the run summary
+        run: cat code-shape-report.md >> "$GITHUB_STEP_SUMMARY"

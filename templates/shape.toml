@@ -1,0 +1,66 @@
+# Paste into your project's pyproject.toml. Every value shown is the kit's default,
+# so delete any line you don't want to change. Why each number:
+
+[tool.shape]
+packages = ["myapp"]            # your top-level package(s)
+# src = "src"                   # set if you use the src/ layout (auto-detected)
+tests = "tests"
+# The ONLY modules allowed to read environment variables (os.environ / os.getenv).
+config_modules = ["myapp/config.py"]
+# Checks that fail `code-shape check`. Leave out to use the default list (all static
+# checks). History-based checks (change-coupling, concept-spread) and test-mirror are
+# never gates by default: they are trends to watch, not rules to block a PR on.
+# gates = ["file-lines", "function-complexity", ...]
+# skip = ["mypy"]               # check groups to switch off entirely
+# exclude = ["myapp/generated/*"]
+
+[tool.shape.limits]
+# --- files, classes, folders ---
+file_lines = 500        # ~10 screens. Past this a file almost always holds two jobs.
+class_lines = 300       # a class bigger than this is usually several classes.
+package_files = 12      # a folder listing that fits on one screen; beyond it, group by concept.
+package_lines = 4000    # a folder holding more is a sub-system that wants its own sub-packages.
+package_depth = 4       # myapp/a/b/c is plenty; deeper trees hide code.
+# --- functions ---
+cyclomatic = 10         # McCabe's original threshold (also NIST SP 500-235).
+cognitive = 15          # SonarSource's default for cognitive complexity.
+args = 6                # ruff/pylint default is 5; 6 leaves room for one context object.
+positional_args = 5     # ruff/pylint default. Extra parameters should be keyword-only.
+branches = 12           # ruff/pylint default.
+returns = 6             # ruff/pylint default.
+statements = 50         # ruff/pylint default (statements, not lines: ~60-80 lines).
+nesting = 4             # pylint's default is 5; 4 keeps indentation readable.
+locals = 15             # pylint default.
+bool_expressions = 5    # pylint default.
+# --- classes ---
+class_attributes = 12   # pylint's 7 flags ordinary dataclasses; 12 still catches god objects.
+public_methods = 20     # pylint default.
+# --- duplication and coupling ---
+duplicate_lines = 10    # pylint's 4 is noisy; 10 identical lines is a real copy-paste.
+fan_out = 12            # a module importing more than 12 project modules knows too much.
+dead_code_confidence = 60   # vulture: 60 = also unused functions/classes (90 = imports only).
+# --- history and concepts (tracked, not gated) ---
+concept_files = 5       # a concept mentioned in more files than this is scattered...
+concept_areas = 3       # ...or in more areas (sub-packages / top-level modules) than this.
+coupling_percent = 50   # two files in different areas sharing >= 50% of their commits.
+coupling_min_shared = 3 # ignore pairs that changed together fewer than 3 times.
+max_changeset_files = 30    # ignore bulk commits (code-maat's default) for coupling.
+history_days = 365
+
+# Ports & adapters: an API that only one module may use. Default rules ban os.environ,
+# os.getenv and os.putenv outside config_modules. Add your own SDKs:
+[tool.shape.banned_api]
+# "openai" = { msg = "Call OpenAI only through myapp/llm/openai_client.py.", allowed = ["myapp/llm/openai_client.py"] }
+# "requests" = { msg = "Use myapp/http.py (timeouts and retries live there).", allowed = ["myapp/http.py"] }
+# "sqlite3" = { msg = "Only myapp/storage/ talks to the database.", allowed = ["myapp/storage/*"] }
+
+# Concepts: name the ideas a change is usually about, so the report can show where each
+# one lives and what changes with it. Terms are case-insensitive regexes.
+[tool.shape.concepts]
+# "billing" = { terms = ["invoice", "BillingService"], home = "myapp/billing/service.py" }
+# "users" = ["User\\b", "account"]
+
+# Extra command-line arguments per tool, for project-specific needs.
+[tool.shape.extra_args]
+# vulture = ["--ignore-decorators", "@app.route,@cli.command"]
+# deptry = ["--optional-dependencies-dev-groups", "dev"]

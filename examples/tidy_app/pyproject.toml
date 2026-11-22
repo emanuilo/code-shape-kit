@@ -1,0 +1,37 @@
+[project]
+name = "tidy-app"
+version = "0.1.0"
+description = "A tiny, well-shaped example project used to prove the code-shape gates work"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+tidy-app = "tidy_app.cli:main"
+
+[tool.shape]
+packages = ["tidy_app"]
+tests = "tests"
+config_modules = ["tidy_app/config.py"]
+
+[tool.shape.banned_api]
+# Ports & adapters: only the storage adapter may touch the file format.
+"json" = { msg = "Only tidy_app/notes/store.py reads/writes the notes file; call NoteStore instead.", allowed = ["tidy_app/notes/store.py"] }
+
+[tool.importlinter]
+root_package = "tidy_app"
+
+[[tool.importlinter.contracts]]
+id = "layers"
+name = "Layers: entry point -> features -> config"
+type = "layers"
+containers = ["tidy_app"]
+layers = ["__main__", "cli", "notes", "config"]
+exhaustive = true
+broken_contract_guidance = "A lower layer imported a higher one. Pass the value in from the caller instead."
+
+[[tool.importlinter.contracts]]
+id = "store-private"
+name = "Only the notes package talks to the storage adapter"
+type = "protected"
+protected_modules = ["tidy_app.notes.store"]
+allowed_importers = ["tidy_app.notes"]

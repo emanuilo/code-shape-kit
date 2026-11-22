@@ -1,0 +1,247 @@
+# Every check the kit knows, in plain language.
+#   title    - short name shown in reports
+#   protects - what goes wrong without it (one sentence, no jargon)
+#   fix      - what an agent should do instead when the check fails
+#   unit     - what the number means
+#   limit    - name of the limit in [tool.shape.limits] (if the check has one)
+#   tool     - the check group that produces it
+#   baseline - false = can never be recorded in the baseline; must always pass
+
+# ---------- size: files, classes, packages ----------
+[file-lines]
+tool = "sizes"
+title = "File too long"
+protects = "Long files usually hold more than one job, so a change in one job risks breaking the other."
+fix = "Split the file by job: move each group of related functions/classes into its own module in the same package."
+unit = "lines"
+limit = "file_lines"
+
+[class-lines]
+tool = "sizes"
+title = "Class too long"
+protects = "A very long class is usually a 'god class' that every feature has to edit."
+fix = "Pull a coherent group of methods (and the data they use) out into a helper class or module and delegate to it."
+unit = "lines"
+limit = "class_lines"
+
+[package-files]
+tool = "sizes"
+title = "Folder has too many modules"
+protects = "A folder with many files has no visible structure; readers can't tell which files belong together."
+fix = "Group related modules into a sub-package (a new folder with __init__.py) named after the concept they share."
+unit = "modules"
+limit = "package_files"
+
+[package-lines]
+tool = "sizes"
+title = "Folder holds too much code"
+protects = "A folder with a lot of code in it is a hidden sub-system that deserves its own package and boundary."
+fix = "Split the folder into sub-packages along concepts, and give each a small public interface."
+unit = "lines"
+limit = "package_lines"
+
+[package-depth]
+tool = "sizes"
+title = "Folders nested too deep"
+protects = "Deep nesting makes imports long and hides code; most projects need 2-3 levels."
+fix = "Flatten: merge single-file folders into their parent or move the code up a level."
+unit = "levels"
+limit = "package_depth"
+
+# ---------- functions ----------
+[function-complexity]
+tool = "ruff"
+title = "Function has too many paths (cyclomatic complexity)"
+protects = "Each if/for/while/and/or adds a path; many paths mean many cases to test and to get wrong."
+fix = "Extract the branches into small named helper functions, or replace if/elif chains with a lookup table."
+unit = "paths"
+limit = "cyclomatic"
+
+[cognitive-complexity]
+tool = "complexipy"
+title = "Function is hard to read (cognitive complexity)"
+protects = "Nested and tangled logic is hard for a human to follow even when it is short."
+fix = "Return early instead of nesting, extract nested blocks into helpers, and split the function by step."
+unit = "points"
+limit = "cognitive"
+
+[too-many-args]
+tool = "ruff"
+title = "Function takes too many arguments"
+protects = "Many parameters mean the function does too much or callers must know too much."
+fix = "Group related parameters into a dataclass, or split the function."
+unit = "arguments"
+limit = "args"
+
+[too-many-positional]
+tool = "ruff"
+title = "Too many positional arguments"
+protects = "Callers can silently pass arguments in the wrong order."
+fix = "Make the extra parameters keyword-only by adding `*,` before them."
+unit = "arguments"
+limit = "positional_args"
+
+[too-many-branches]
+tool = "ruff"
+title = "Function has too many branches"
+protects = "Many if/elif/else branches in one function usually mean several jobs in one place."
+fix = "Split by case: one helper per branch, or a dispatch dict mapping case -> handler."
+unit = "branches"
+limit = "branches"
+
+[too-many-returns]
+tool = "ruff"
+title = "Function has too many return statements"
+protects = "Many exits make it hard to see what the function returns in each case."
+fix = "Split the function, or compute the result in one place and return once."
+unit = "returns"
+limit = "returns"
+
+[too-many-statements]
+tool = "ruff"
+title = "Function too long"
+protects = "Long functions do several steps that could each be named, tested and reused."
+fix = "Extract each step into its own well-named function."
+unit = "statements"
+limit = "statements"
+
+[nesting]
+tool = "pylint"
+title = "Blocks nested too deep"
+protects = "Code indented many levels is hard to follow and hides edge cases."
+fix = "Use early returns/continue, and extract the inner loop body into a helper."
+unit = "levels"
+limit = "nesting"
+
+[too-many-locals]
+tool = "pylint"
+title = "Function juggles too many variables"
+protects = "Many local variables mean the reader must keep too much in mind at once."
+fix = "Split the function into steps that each need only a few variables."
+unit = "variables"
+limit = "locals"
+
+[bool-expressions]
+tool = "pylint"
+title = "Condition too complicated"
+protects = "An if with many and/or parts is easy to get wrong."
+fix = "Give the condition a name: move it into a small function such as `is_eligible(...)`."
+unit = "parts"
+limit = "bool_expressions"
+
+# ---------- classes ----------
+[class-attributes]
+tool = "pylint"
+title = "Class stores too much state"
+protects = "A class with many attributes mixes several responsibilities that change for different reasons."
+fix = "Move groups of related attributes into their own small classes (often dataclasses)."
+unit = "attributes"
+limit = "class_attributes"
+
+[public-methods]
+tool = "pylint"
+title = "Class has too many public methods"
+protects = "A wide class interface means every caller depends on a big surface that is hard to change."
+fix = "Split the class by the groups of callers that use it."
+unit = "methods"
+limit = "public_methods"
+
+# ---------- hidden coupling ----------
+[global-state]
+tool = "ruff"
+title = "Function changes a global variable"
+protects = "Global state couples distant code invisibly and makes tests depend on order."
+fix = "Pass the value in, return it, or keep it on an object that owns it."
+unit = "uses"
+
+[banned-api]
+tool = "ruff"
+title = "Restricted API used outside its home module"
+protects = "Things like environment variables or a third-party SDK should be touched in one place, so changing them is a one-file change."
+fix = "Use the project's wrapper module (see the message) instead of calling this API directly."
+unit = "uses"
+
+[private-access]
+tool = "ruff"
+title = "Private member used from outside its class"
+protects = "Names starting with _ are a class's internals; code that reaches into them breaks when the internals change."
+fix = "Use (or add) a public method on that class instead of reaching into `_name`."
+unit = "uses"
+
+[duplicate-code]
+tool = "pylint"
+title = "Copy-pasted code"
+protects = "Duplicated code must be fixed in every copy; copies drift apart."
+fix = "Move the shared lines into one function in a module both callers already depend on."
+unit = "duplicated lines"
+limit = "duplicate_lines"
+
+# ---------- module structure ----------
+[import-contracts]
+tool = "import-linter"
+title = "Architecture rules (import-linter contracts)"
+protects = "Layers and boundaries you decided on (who may import whom) stay true as code is added."
+fix = "Do not import across the boundary. Move the code to the right layer, pass the dependency in, or (if the rule is wrong) change the contract on purpose."
+unit = ""
+baseline = false
+
+[import-cycles]
+tool = "graph"
+title = "Modules import each other in a circle"
+protects = "In a cycle no module can be understood, tested or changed alone."
+fix = "Move the shared piece into a lower module both can import, or pass a dependency in instead of importing it."
+unit = "modules in cycle"
+
+[fan-out]
+tool = "graph"
+title = "Module depends on too many others"
+protects = "A module that imports many modules breaks whenever any of them changes."
+fix = "Split the module, or let a coordinator pass in the few things it needs."
+unit = "modules imported"
+limit = "fan_out"
+
+# ---------- hygiene ----------
+[dead-code]
+tool = "vulture"
+title = "Unused code"
+protects = "Dead code misleads readers and agents into editing or copying it."
+fix = "Delete it. If a framework calls it by name, add it to the vulture whitelist (see README)."
+unit = ""
+
+[dependencies]
+tool = "deptry"
+title = "Dependency declarations out of sync"
+protects = "Imports of undeclared packages break installs; declared-but-unused ones bloat and confuse."
+fix = "Declare what you import directly in pyproject.toml, and remove what you no longer use."
+unit = ""
+
+[type-errors]
+tool = "mypy"
+title = "Type errors"
+protects = "Type checks keep the interfaces between modules consistent when one side changes."
+fix = "Fix the types so caller and callee agree; don't add `# type: ignore` without a reason."
+unit = "errors"
+
+# ---------- locality of change (history and concepts) ----------
+[change-coupling]
+tool = "history"
+title = "Files in different areas that always change together"
+protects = "If two distant files must always be edited together, a concept is split across them."
+fix = "Move the shared concept into one module, or put the two files in the same package."
+unit = "% of commits shared"
+limit = "coupling_percent"
+
+[concept-spread]
+tool = "concepts"
+title = "A concept is scattered across many files"
+protects = "Changing one idea (say, 'reminders') should touch a few nearby files, not the whole project."
+fix = "Give the concept a home module/package and route other code through its interface."
+unit = "files"
+limit = "concept_files"
+
+[test-mirror]
+tool = "tests"
+title = "Module has no matching test file"
+protects = "When tests mirror the source tree, it is obvious where a module's tests live and which are missing."
+fix = "Add tests/<same path>/test_<module>.py for this module."
+unit = ""
