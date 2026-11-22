@@ -84,7 +84,7 @@ Needs Python 3.11 or newer (import-linter and grimp, which the kit drives, requi
 pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit"
 
 # in CI, pin a tag (or a commit sha) so the gates only change when you bump it
-pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.1.1"
+pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.1.2"
 ```
 
 `pip install git+https://github.com/emanuilo/code-shape-kit` alone installs only the
