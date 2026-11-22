@@ -14,7 +14,7 @@ from code_shape.settings import Settings
 class Definition(NamedTuple):
     start: int  # first line, including decorators
     end: int
-    name: str  # qualified, e.g. "Agent.run"
+    name: str  # qualified, e.g. "Order.total"
     is_class: bool
 
 
@@ -58,7 +58,7 @@ def definitions(path: Path) -> tuple[Definition, ...]:
 
 
 def symbol_at(path: Path, line: int) -> str:
-    """Innermost function or class around `line`, e.g. 'Agent.run'; '' at module level."""
+    """Innermost function or class around `line`, e.g. 'Order.total'; '' at module level."""
     best = ""
     for d in definitions(path):
         if d.start <= line <= d.end:
@@ -78,7 +78,7 @@ def module_path(settings: Settings, dotted: str) -> str:
 def unit_of(rel_path: str, packages: list[str]) -> str:
     """The 'area' a file belongs to: its first sub-package, or the top-level module.
 
-    myapp/bot/slack.py -> myapp/bot ; myapp/agent.py -> myapp/agent.py
+    myapp/payments/stripe.py -> myapp/payments ; myapp/cli.py -> myapp/cli.py
     """
     parts = rel_path.split("/")
     for pkg in packages:

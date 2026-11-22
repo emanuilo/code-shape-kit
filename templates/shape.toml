@@ -1,5 +1,10 @@
-# Paste into your project's pyproject.toml. Every value shown is the kit's default,
-# so delete any line you don't want to change. Why each number:
+# Paste into your project's pyproject.toml. `myapp` and every module name below are
+# placeholders: replace them with your own. What to fill in:
+#   packages, config_modules           - always
+#   banned_api, concepts               - recommended (examples are commented out)
+#   limits                             - only where a default is wrong for your project
+# Every limit shown is the kit's default, so you can delete any line you don't change.
+# Why each number:
 
 [tool.shape]
 packages = ["myapp"]            # your top-level package(s)
@@ -47,18 +52,22 @@ coupling_min_shared = 3 # ignore pairs that changed together fewer than 3 times.
 max_changeset_files = 30    # ignore bulk commits (code-maat's default) for coupling.
 history_days = 365
 
-# Ports & adapters: an API that only one module may use. Default rules ban os.environ,
-# os.getenv and os.putenv outside config_modules. Add your own SDKs:
+# Adapters: an API (a module or a third-party package) that only one place may use.
+# The default rules ban os.environ, os.getenv and os.putenv outside config_modules.
+# Add one line per outside system:  "<import name>" = { msg = "<what to do instead>",
+# allowed = ["<file or glob that may use it>"] }. Examples:
 [tool.shape.banned_api]
-# "openai" = { msg = "Call OpenAI only through myapp/llm/openai_client.py.", allowed = ["myapp/llm/openai_client.py"] }
+# "stripe" = { msg = "Call Stripe only through myapp/stripe_client.py.", allowed = ["myapp/stripe_client.py"] }
 # "requests" = { msg = "Use myapp/http.py (timeouts and retries live there).", allowed = ["myapp/http.py"] }
-# "sqlite3" = { msg = "Only myapp/storage/ talks to the database.", allowed = ["myapp/storage/*"] }
+# "sqlalchemy" = { msg = "Only myapp/db/ talks to the database.", allowed = ["myapp/db/*"] }
 
 # Concepts: name the ideas a change is usually about, so the report can show where each
-# one lives and what changes with it. Terms are case-insensitive regexes.
+# one lives and what changes with it. Terms are case-insensitive regexes; `home` is the
+# module that should own the concept (optional). Examples:
 [tool.shape.concepts]
 # "billing" = { terms = ["invoice", "BillingService"], home = "myapp/billing/service.py" }
 # "users" = ["User\\b", "account"]
+# "export" = ["export", "to_csv"]
 
 # Extra command-line arguments per tool, for project-specific needs.
 [tool.shape.extra_args]

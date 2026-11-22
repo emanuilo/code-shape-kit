@@ -14,8 +14,8 @@ tests = "tests"
 config_modules = ["tidy_app/config.py"]
 
 [tool.shape.banned_api]
-# Ports & adapters: only the storage adapter may touch the file format.
-"json" = { msg = "Only tidy_app/notes/store.py reads/writes the notes file; call NoteStore instead.", allowed = ["tidy_app/notes/store.py"] }
+# Adapters: only the storage module may touch the file format.
+"json" = { msg = "Only tidy_app/inventory/store.py reads/writes the stock file; go through Inventory instead.", allowed = ["tidy_app/inventory/store.py"] }
 
 [tool.importlinter]
 root_package = "tidy_app"
@@ -25,13 +25,13 @@ id = "layers"
 name = "Layers: entry point -> features -> config"
 type = "layers"
 containers = ["tidy_app"]
-layers = ["__main__", "cli", "notes", "config"]
+layers = ["__main__", "cli", "inventory", "config"]
 exhaustive = true
 broken_contract_guidance = "A lower layer imported a higher one. Pass the value in from the caller instead."
 
 [[tool.importlinter.contracts]]
 id = "store-private"
-name = "Only the notes package talks to the storage adapter"
+name = "Only the inventory package talks to the storage adapter"
 type = "protected"
-protected_modules = ["tidy_app.notes.store"]
-allowed_importers = ["tidy_app.notes"]
+protected_modules = ["tidy_app.inventory.store"]
+allowed_importers = ["tidy_app.inventory"]

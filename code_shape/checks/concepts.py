@@ -1,8 +1,8 @@
 """Locality of change per concept.
 
 You name the project's concepts in [tool.shape.concepts] with a few words or
-regexes each, e.g.  reminders = ["remind", "ReminderScheduler"], or with an
-explicit home module:  reminders = {terms = ["remind"], home = "app/reminders.py"}.
+regexes each, e.g.  refunds = ["refund", "RefundPolicy"], or with an
+explicit home module:  refunds = {terms = ["refund"], home = "shop/refunds.py"}.
 For every concept the check reports:
   - code: source files that mention it (a proxy for "files you touch to change it")
   - home: the module that owns it (default: the file that mentions it most)

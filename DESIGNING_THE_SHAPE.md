@@ -4,54 +4,75 @@ Tools can guard a shape. They can't choose one. This page is the human part: a s
 practical way to decide how a project should be split, and how to turn each decision
 into a rule the kit enforces.
 
+The **shape** of a project is how its code is split into files and folders, and which
+parts may use which. A good shape means most changes touch a few files in one place.
+
 ## 1. List the concepts
 
-A concept is an idea a change request is about: "reminders", "billing", "Slack support",
-"how notes are searched". Write down 8-15 of them. Good sources: the README's feature
-list, the nouns in your issue tracker, the last 20 commit messages.
+A **concept** is one thing people ask you to change. In a web shop: "checkout",
+"refunds", "stock levels". In a CLI tool: "the config file", "the `sync` command".
+In a data pipeline: "loading the CSV files", "removing duplicates", "the weekly report".
 
-For each concept, ask: **which files would I touch to change it?** The goal is a few files
-in one place. If the answer is "six files in five folders", the concept has no home.
+Write down 8-15 of them. Good places to look: the feature list in the README, the
+words that keep coming up in your issues, the last 20 commit messages.
+
+For each concept, ask: **which files would I touch to change it?** The answer should be
+a few files in one folder. If it is "six files in five folders", the concept has no home.
 
 ## 2. Give every concept one home
 
-A home is a module, or a package when the concept is big. The home owns the concept's
-data, rules and storage. Everyone else calls the home's **public interface**: the few
-functions and classes it exports from `__init__.py`.
+A **home** is the module (one `.py` file), or the package (a folder of modules) when the
+concept is big, that owns the concept: its data, its rules, how it is saved.
 
-- One concept, one home. Two homes for one concept means edits in two places.
-- A home for "things that have nothing in common" (`utils.py`, `helpers.py`, `common.py`)
-  is not a home. Name modules after what they own.
-- Name files after the thing, not the role: `bot/telegram.py`, not `bot/handlers.py`.
+Other code uses the home only through its **public interface**: the few functions and
+classes it offers to the rest of the project, usually the ones listed in its `__init__.py`.
+Everything else inside is private and can change freely.
+
+- One concept, one home. Two homes for one concept means every change is made twice.
+- `utils.py`, `helpers.py` and `common.py` are not homes. They collect things that have
+  nothing in common. Name a module after what it owns.
+- Name files after the thing, not the kind of code: `orders/pricing.py`, not
+  `orders/logic.py`; `export/csv.py`, not `export/handlers.py`.
 
 ## 3. Pick the layers
 
-Layers say which way dependencies point. A typical stack, top to bottom:
+A **layer** is a group of modules at the same level. Layers decide which way imports
+point: a module may import from layers below it, never from layers above.
+A common stack, top to bottom:
 
 ```
-entry points   cli.py, web app, bot runners      read input, call features, print output
-features       reminders/, billing/, search/     the use cases: rules + orchestration
-adapters       storage/, llm/, telegram/         talk to the outside world (DB, SDKs, network)
-core           domain models, pure functions     no I/O at all
-config         settings                          imports nothing from the project
+entry points   cli.py, api/ (web routes), worker.py   read input, call features, send output
+features       orders/, refunds/, reports/            what the program does: rules and steps
+adapters       db/, email.py, stripe_client.py        talk to the outside world
+domain         models.py, pure functions              plain data and rules, no I/O
+config         config.py                              settings; imports nothing from the project
 ```
 
-Rule: a module may import from lower layers only. A feature never imports the CLI; the
-config never imports a feature. When a lower layer needs something from a higher one,
-pass it in (a function argument or a small protocol) instead of importing it.
+(**I/O** means input and output: reading files, calling the network, using a database.)
 
-Features in the same layer should be **independent**: reminders doesn't import billing.
-If they must cooperate, a higher layer (an entry point or a coordinator) wires them.
+So a feature never imports the CLI, and the config never imports a feature. When a
+lower layer needs something from a higher one, pass it in as an argument instead of
+importing it.
+
+Features in the same layer should be **independent**: `refunds` doesn't import `reports`.
+If two features must work together, the code above them (an entry point) connects them.
+
+Small projects can skip layers they don't need. A 500-line CLI may only have
+`cli.py`, two feature modules and `config.py`.
 
 ## 4. Put every outside thing behind an adapter
 
-Each external system gets exactly one adapter module: the database, each SDK (OpenAI,
-Slack, Stripe), the file system layout, the environment variables. Only the adapter
-imports the SDK. The rest of the code calls the adapter's functions.
+An **adapter** is the one module that talks to one outside system, so the rest of the
+code doesn't have to. Typical outside systems: the database, a payment service, an email
+service, cloud storage (S3), another team's HTTP API, the file layout on disk, and the
+environment variables.
 
-Why: replacing the SDK, adding retries, faking it in tests, or logging all calls becomes
-a one-file change. Environment variables are the most common leak: read them in
-`config.py` only, and pass values down.
+Only the adapter imports the third-party package (the SDK). Everyone else calls the
+adapter's functions.
+
+Why: swapping the service, adding retries, faking it in tests, or logging every call
+becomes a one-file change. Environment variables are the most common leak: read them
+in `config.py` only, and pass the values down.
 
 ## 5. When to split
 
@@ -59,81 +80,96 @@ Split a **file** when any of these is true:
 
 - it passes ~500 lines, or a class passes ~300;
 - it has two groups of functions that don't call each other;
-- you'd describe it with "and" ("parses the input *and* talks to the API");
-- two different kinds of change keep landing in it (it is a hotspot in the report);
-- its tests need unrelated fixtures.
+- you describe it with "and" ("parses the order *and* sends the email");
+- two different kinds of change keep landing in it (it is a "hotspot" in the report);
+- its tests need setup that has nothing to do with each other.
 
-Split a **package** when:
+Split a **package** (folder) when:
 
 - it has more than ~12 modules, or more than ~4,000 lines;
-- a subgroup of its modules mostly imports each other: that subgroup is a sub-package;
-- concepts inside it start getting prefixes (`slack_*.py`, `whatsapp_*.py`): make
-  `slack/` and `whatsapp/` packages.
+- a group of its modules mostly import each other: that group wants its own sub-folder;
+- file names start sharing a prefix (`invoice_pdf.py`, `invoice_email.py`,
+  `invoice_totals.py`): make an `invoices/` package with `pdf.py`, `email.py`, `totals.py`.
 
-**Don't** split when the pieces would always change together anyway, when it creates
-one-function modules that only forward calls, or when it makes the tree deeper than
-3-4 levels. A split is real if each new piece can be explained in one sentence and
-tested on its own.
+**Don't split** when the pieces would always change together anyway, when it creates
+one-function modules that only pass calls along, or when it makes the folders deeper
+than 3-4 levels. A split is real if you can explain each new piece in one sentence and
+test it on its own.
 
-## 6. Check locality before you commit to a shape
+## 6. Test the shape with likely changes
 
-Take the five most likely future changes ("add a Discord bot", "switch embeddings
-provider", "add a new setting") and list the files each would touch in the proposed
-shape. Aim for **three files or fewer, in one area**. If a change needs more, move
-code until it doesn't. This one exercise catches most shape problems early.
+Before you settle on a shape, take the five changes you expect most often and list the
+files each one would touch. For example:
 
-## 7. Encode each decision as a rule
+- web shop: "accept PayPal as well as cards", "add a discount code field";
+- CLI tool: "add a `--json` output option", "add a new command";
+- data pipeline: "read a new source format", "add a column to the report";
+- REST service: "add a new endpoint", "move uploaded files from disk to S3".
+
+Aim for **three files or fewer, in one folder**, per change. If a change needs more,
+move code until it doesn't. This one exercise catches most shape problems early.
+
+## 7. Turn each decision into a rule
 
 | Decision | Rule | Where |
 |---|---|---|
 | Layers and their order | `layers` contract, `exhaustive = true` | `[tool.importlinter]` |
 | Features don't import each other | `independence` contract | `[tool.importlinter]` |
-| A package's internals are private | `protected` contract, or name them `_private.py` + `private_modules` contract | `[tool.importlinter]` |
-| An SDK only in its adapter | `protected` contract on the SDK package, or `banned_api` with `allowed` | either |
-| Env vars only in config | `config_modules` (on by default) | `[tool.shape]` |
-| Sizes and complexity | `[tool.shape.limits]` (defaults are sensible) | `[tool.shape]` |
+| A package's insides are private | `protected` contract, or name them `_private.py` + `private_modules` contract | `[tool.importlinter]` |
+| A third-party package only in its adapter | `protected` contract on that package, or `banned_api` with `allowed` | either |
+| Environment variables only in config | `config_modules` (on by default) | `[tool.shape]` |
+| Sizes and complexity | `[tool.shape.limits]` (the defaults are sensible) | `[tool.shape]` |
 | Where each concept lives | `[tool.shape.concepts]` with a `home` | `[tool.shape]` (tracked) |
-| Tests mirror the source | follow `tests/<path>/test_<module>.py` | tracked |
+| Tests mirror the source | `tests/<path>/test_<module>.py` | tracked |
 
-Write `broken_contract_guidance` in each contract: it is what an agent reads when it
-breaks the rule.
+Write `broken_contract_guidance` in each contract. It is what an agent reads when it
+breaks the rule, so say what to do instead.
 
-## 8. Example
+## 8. Two examples
 
-A chat assistant with three chat apps, two AI providers, and memory. A shape where each
-likely change stays local:
+**A web shop backend.** Each feature has a home; each outside service has one adapter.
 
 ```
-assistant/
-  cli.py                    entry point: parse args, pick a platform, run it
-  config.py                 all settings; the only reader of env vars
-  agent/                    feature: one conversation turn (context, prompt, tools)
-    __init__.py             public: Agent
-    prompts.py              the system prompt text
-    tools/                  one module per tool group: schema + implementation together
-  memory/                   feature: notes, index, search, consolidation
-    __init__.py             public: Memory (save, search, consolidate)
-    notes.py  index.py  search.py  consolidation.py
-  reminders/                feature
-  platforms/                adapters for chat apps
-    __init__.py             registry: name -> run(config)
-    inbound.py              shared: voice -> text, links -> summaries, build the agent prompt
-    telegram.py  slack.py  whatsapp.py    only receive / download / send
-  llm/                      adapters for AI providers, behind one protocol
-    base.py  anthropic.py  openai.py
+shop/
+  api/                  entry point: web routes; parse the request, call a feature, return JSON
+  config.py             all settings; the only reader of environment variables
+  orders/               feature: cart, checkout, order status
+    __init__.py         public: place_order, cancel_order
+    pricing.py  checkout.py  status.py
+  inventory/            feature: stock levels, reservations
+  payments/             feature: charge, refund
+    __init__.py         public: charge, refund
+    gateway.py          the rules every payment provider follows
+    stripe.py           adapter: the only module that imports the stripe package
+  db/                   adapter: tables and queries; others call its functions
+  email.py              adapter: sends emails
 ```
 
-"Add Discord" = one new file in `platforms/` plus one registry line. "Swap the
-transcription model" = `inbound.py` only. "Add a tool" = one file in `agent/tools/`.
+"Accept PayPal" = one new `payments/paypal.py` plus one line that registers it.
+"Change the tax rule" = `orders/pricing.py` only.
+
+**A data pipeline** that loads files, cleans them and writes a report.
+
+```
+pipeline/
+  cli.py                entry point: `pipeline run --date 2026-01-31`
+  config.py             paths and credentials
+  sources/              adapters, one per input: csv.py  excel.py  s3.py
+  cleaning/             feature: dedupe.py  dates.py  currencies.py
+  report/               feature: build.py (the numbers)  render.py (the HTML)
+```
+
+"Read Parquet files too" = one new file in `sources/`. "Fix how dates are parsed" =
+`cleaning/dates.py` only.
 
 ## 9. What only a human can judge
 
 The tools measure size, direction and spread. They can't tell whether:
 
 - a name says what the module does;
-- an interface is the *right* one (small, hard to misuse), not just small;
+- an interface is the *right* one (small and hard to misuse), not just small;
 - a split followed a real seam or just cut a file in half;
-- an abstraction earns its keep, or is a layer of forwarding calls.
+- an abstraction earns its keep, or only passes calls along.
 
-Review these by reading the module list and each package's `__init__.py`, not every line.
-That is a 10-minute review even on a big project.
+Review these by reading the list of modules and each package's `__init__.py`, not
+every line. That takes about 10 minutes, even on a big project.

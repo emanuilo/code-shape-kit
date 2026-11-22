@@ -1,18 +1,19 @@
-"""Command line: `tidy-app add <text>` and `tidy-app list`."""
+"""Command line: `tidy-app add <item> [count]` and `tidy-app list`."""
 
 import argparse
 
 from tidy_app.config import load_settings
-from tidy_app.notes import NoteService
+from tidy_app.inventory import Inventory
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="tidy-app")
     parser.add_argument("command", choices=["add", "list"])
-    parser.add_argument("text", nargs="?", default="")
+    parser.add_argument("item", nargs="?", default="")
+    parser.add_argument("count", nargs="?", type=int, default=1)
     args = parser.parse_args(argv)
-    service = NoteService.open(load_settings().notes_file)
+    inventory = Inventory.open(load_settings().stock_file)
     if args.command == "add":
-        service.add(args.text)
-    for note in service.all():
-        print(note)
+        inventory.add(args.item, args.count)
+    for item, count in inventory.counts().items():
+        print(f"{item}: {count}")

@@ -82,7 +82,7 @@ so an agent can fix it without asking.
 pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit"
 
 # in CI, pin a tag (or a commit sha) so the gates only change when you bump it
-pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.1.0"
+pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.1.1"
 ```
 
 `pip install git+https://github.com/emanuilo/code-shape-kit` alone installs only the
@@ -110,12 +110,12 @@ check groups). `templates/code-shape.mk` has the same as `make shape-report`,
 
 **How the baseline works.** `.code-shape-baseline.json` lists known problems by place
 (file + function name, no line numbers, so unrelated edits don't disturb it) and by size
-(e.g. "agent.py: 699 lines"). `check` then fails when:
+(e.g. "orders.py: 640 lines"). `check` then fails when:
 
 - a problem is **new** (not in the baseline);
-- a known problem got **worse** (699 -> 720 lines);
+- a known problem got **worse** (640 -> 660 lines);
 - a known problem got **better** but the baseline wasn't updated. Run `code-shape tighten`
-  and commit. That is the ratchet: once agent.py is down to 600 lines, 650 fails.
+  and commit. That is the ratchet: once orders.py is down to 560 lines, 600 fails.
 
 Inline suppressions (`# noqa`) are ignored by the shape checks on purpose. The baseline
 is the one visible place for exceptions, and every addition to it shows up in the PR diff.
@@ -135,8 +135,7 @@ Architecture contracts are never baselined by the kit: use import-linter's own
 ## Existing project
 
 1. Run `code-shape report --trend 8`. Read the summary, the worst offenders and the
-   concept table. (The kit was first applied this way to
-   [memclaw](https://github.com/emanuilo/memclaw).)
+   concept table.
 2. Decide the target shape (`DESIGNING_THE_SHAPE.md`) and write the import-linter contracts.
    For imports that break them today, list them under `ignore_imports`.
 3. Adjust limits only where the default is wrong for the project, not to make today's code pass.
@@ -197,7 +196,7 @@ code-shape-kit/
     importlinter.toml        contract templates: layers, independence, interfaces, adapters, cycles
     github/code-shape.yml    CI: gate on PRs, weekly report with trends
     code-shape.mk            make targets for projects
-  examples/tidy_app/         a small, well-shaped project; the tests break it on purpose
+  examples/tidy_app/         a tiny, well-shaped stock-count CLI; the tests break it on purpose
   tests/test_gates.py        proof that each gate fails with a clear message, and the ratchet holds
   .github/workflows/ci.yml   the kit's own CI: tests + `code-shape check` on itself
 ```

@@ -7,8 +7,8 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class Settings:
-    notes_file: Path
+    stock_file: Path
 
 
 def load_settings() -> Settings:
-    return Settings(notes_file=Path(os.environ.get("TIDY_NOTES", "notes.json")))
+    return Settings(stock_file=Path(os.environ.get("TIDY_STOCK_FILE", "stock.json")))

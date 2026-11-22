@@ -1,6 +1,6 @@
 from tidy_app.config import load_settings
 
 
-def test_reads_notes_path(monkeypatch):
-    monkeypatch.setenv("TIDY_NOTES", "x.json")
-    assert load_settings().notes_file.name == "x.json"
+def test_reads_stock_file_path(monkeypatch):
+    monkeypatch.setenv("TIDY_STOCK_FILE", "x.json")
+    assert load_settings().stock_file.name == "x.json"

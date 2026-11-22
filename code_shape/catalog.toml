@@ -234,7 +234,7 @@ limit = "coupling_percent"
 [concept-spread]
 tool = "concepts"
 title = "A concept is scattered across many files"
-protects = "Changing one idea (say, 'reminders') should touch a few nearby files, not the whole project."
+protects = "Changing one idea (say, 'discounts') should touch a few nearby files, not the whole project."
 fix = "Give the concept a home module/package and route other code through its interface."
 unit = "files"
 limit = "concept_files"

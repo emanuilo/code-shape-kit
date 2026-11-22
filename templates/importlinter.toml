@@ -1,6 +1,15 @@
-# Architecture contracts for import-linter. Paste into pyproject.toml and rename
-# `myapp` and the module names. Each contract is one decision from
-# DESIGNING_THE_SHAPE.md written down so a tool can guard it.
+# Architecture contracts for import-linter. Paste into pyproject.toml, then replace
+# the names with your own. Each contract is one decision from DESIGNING_THE_SHAPE.md,
+# written down so a tool can guard it. Delete the contracts you don't need.
+#
+# Every name below is a PLACEHOLDER, shown for a small web shop:
+#   myapp                -> your top-level package
+#   cli, api             -> your entry points (what starts the program: a CLI, web routes, a worker)
+#   orders, inventory    -> your features (one package per concept)
+#   db, stripe_client    -> your adapters (one module or package per outside system)
+#   domain               -> plain data and rules, no I/O (no files, network or database)
+#   config               -> settings
+#   stripe               -> a third-party package that only its adapter may import
 #
 # Existing project with violations? Do NOT weaken the contract. List today's illegal
 # imports under `ignore_imports` (that is import-linter's own baseline), and keep
@@ -9,20 +18,21 @@
 
 [tool.importlinter]
 root_package = "myapp"
-# Lets contracts mention third-party packages (for the "SDK only in its adapter" rule).
+# Lets contracts mention third-party packages (needed for contract 5).
 include_external_packages = true
 
-# 1. Layers: dependencies point one way, from entry points down to the core.
+# 1. Layers: dependencies point one way, from the top of the list to the bottom.
+#    One entry per layer, highest first. `a | b` = same layer, and a and b may not
+#    import each other. Names are modules or packages directly inside myapp.
 [[tool.importlinter.contracts]]
 id = "layers"
-name = "Layers: cli -> features -> core -> config"
+name = "Layers: entry points -> features -> adapters -> domain -> config"
 type = "layers"
 containers = ["myapp"]
 layers = [
-    "cli",                         # entry points: parse input, call features
-    "api | worker",                # independent front-ends (`|` = may not import each other)
-    "billing | users",             # features
-    "storage | llm",               # adapters for the outside world
+    "cli | api",                   # entry points: read input, call features, return output
+    "orders | inventory",          # features: the use cases
+    "db | stripe_client",          # adapters: talk to the outside world
     "domain",                      # plain rules and data, no I/O
     "config",                      # settings; imports nothing from myapp
 ]
@@ -32,36 +42,41 @@ A lower layer imported a higher one. Move the shared code down a layer,
 or pass the dependency in from the caller. Don't add ignore_imports for new code.
 """
 
-# 2. Features don't reach into each other's internals.
+# 2. Features don't import each other. List your feature packages.
+#    (The layers contract above already does this for features written as `a | b`;
+#    use this one when features sit deeper, e.g. myapp.features.orders.)
 [[tool.importlinter.contracts]]
 id = "features-independent"
 name = "Features are independent"
 type = "independence"
-modules = ["myapp.billing", "myapp.users"]
+modules = ["myapp.orders", "myapp.inventory"]
 
-# 3. Encapsulation: modules named _something are private to their package.
+# 3. Private modules: a module named _something.py may only be imported inside its own
+#    package. Needs no names; works as is.
 [[tool.importlinter.contracts]]
 id = "private-modules"
 name = "Private modules (_name.py) are only imported inside their own package"
 type = "private_modules"
 
-# 4. Public interface: only the package itself may import its internals.
+# 4. Public interface: other code goes through the package (its __init__.py), not its
+#    internals. protected_modules = the internals; allowed_importers = the package itself.
 [[tool.importlinter.contracts]]
-id = "storage-interface"
-name = "Everyone goes through myapp.storage, not its internals"
+id = "db-interface"
+name = "Everyone goes through myapp.db, not its internals"
 type = "protected"
-protected_modules = ["myapp.storage.sql", "myapp.storage.models"]
-allowed_importers = ["myapp.storage"]
+protected_modules = ["myapp.db.tables", "myapp.db.queries"]
+allowed_importers = ["myapp.db"]
 
-# 5. Ports & adapters: a third-party SDK lives behind one adapter.
+# 5. One adapter per outside system: a third-party package is imported by one module only.
+#    protected_modules = the third-party package; allowed_importers = its adapter.
 [[tool.importlinter.contracts]]
 id = "sdk-in-adapter"
-name = "The OpenAI SDK is only imported by myapp.llm"
+name = "The stripe package is only imported by myapp.stripe_client"
 type = "protected"
-protected_modules = ["openai"]
-allowed_importers = ["myapp.llm"]
+protected_modules = ["stripe"]
+allowed_importers = ["myapp.stripe_client"]
 
-# 6. No cycles between sibling modules inside any sub-package.
+# 6. No cycles between sibling modules inside any sub-package. Works as is.
 [[tool.importlinter.contracts]]
 id = "no-cycles"
 name = "No circular imports between sibling modules"

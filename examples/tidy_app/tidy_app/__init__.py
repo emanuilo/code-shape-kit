@@ -1,1 +1,1 @@
-"""tidy_app: keep short notes in a JSON file."""
+"""tidy_app: count items in stock, kept in a JSON file."""

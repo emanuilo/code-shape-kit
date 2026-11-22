@@ -45,17 +45,17 @@ print(classify(1, 2, 3))
 
 DUPLICATE = """
 
-def summarize(notes: list[str]) -> str:
+def summarize(names: list[str]) -> str:
     total = 0
     longest = ""
-    for note in notes:
-        total += len(note)
-        if len(note) > len(longest):
-            longest = note
-    average = total / len(notes) if notes else 0
-    words = sum(len(n.split()) for n in notes)
-    first = notes[0] if notes else ""
-    last = notes[-1] if notes else ""
+    for name in names:
+        total += len(name)
+        if len(name) > len(longest):
+            longest = name
+    average = total / len(names) if names else 0
+    words = sum(len(n.split()) for n in names)
+    first = names[0] if names else ""
+    last = names[-1] if names else ""
     return f"{total} {longest} {average} {words} {first} {last}"
 
 
@@ -64,7 +64,7 @@ print(summarize([]))
 
 # name -> (file to change, text to append, what the failure must say)
 VIOLATIONS = {
-    "file too long": ("tidy_app/notes/service.py", "\n" + "# filler\n" * 520, "[file-lines]"),
+    "file too long": ("tidy_app/inventory/service.py", "\n" + "# filler\n" * 520, "[file-lines]"),
     "complex function": ("tidy_app/cli.py", COMPLEX, "[function-complexity]"),
     "hard-to-read function": ("tidy_app/cli.py", COMPLEX, "[cognitive-complexity]"),
     "env var outside config": (
@@ -73,16 +73,16 @@ VIOLATIONS = {
         "Read settings through the config module",
     ),
     "adapter bypassed": (
-        "tidy_app/notes/service.py",
+        "tidy_app/inventory/service.py",
         "\nimport json\n\nprint(json.dumps([]))\n",
-        "Only tidy_app/notes/store.py reads/writes the notes file",
+        "Only tidy_app/inventory/store.py reads/writes the stock file",
     ),
     "layer broken": (
         "tidy_app/config.py",
-        "\nfrom tidy_app.notes import NoteService\n\nprint(NoteService)\n",
+        "\nfrom tidy_app.inventory import Inventory\n\nprint(Inventory)\n",
         "[import-contracts]",
     ),
-    "dead code": ("tidy_app/notes/service.py", "\n\ndef never_called() -> int:\n    return 1\n", "[dead-code]"),
+    "dead code": ("tidy_app/inventory/service.py", "\n\ndef never_called() -> int:\n    return 1\n", "[dead-code]"),
     "type error": (
         "tidy_app/config.py",
         "\n\ndef port() -> int:\n    return 'x'\n\n\nprint(port())\n",
@@ -141,20 +141,20 @@ def test_violation_fails_with_clear_message_then_passes_after_revert(project: Pa
 
 def test_too_many_modules_in_one_folder(project: Path) -> None:
     for i in range(13):
-        (project / "tidy_app" / "notes" / f"part{i}.py").write_text(f'"""Part {i}."""\n')
+        (project / "tidy_app" / "inventory" / f"part{i}.py").write_text(f'"""Part {i}."""\n')
     code, out = shape(project, "check", "--only", "sizes")
     assert code == 1 and "[package-files]" in out, out
 
 
 def test_copy_paste_fails(project: Path) -> None:
-    for file in ("tidy_app/cli.py", "tidy_app/notes/service.py"):
+    for file in ("tidy_app/cli.py", "tidy_app/inventory/service.py"):
         (project / file).write_text((project / file).read_text() + DUPLICATE)
     code, out = shape(project, "check", "--only", "pylint")
     assert code == 1 and "[duplicate-code]" in out, out
 
 
 def test_baseline_ratchet(project: Path) -> None:
-    service = project / "tidy_app" / "notes" / "service.py"
+    service = project / "tidy_app" / "inventory" / "service.py"
     original = service.read_text()
     service.write_text(original + "# filler\n" * 520)  # existing debt: ~550 lines
     assert shape(project, "check", "--only", "sizes")[0] == 1
