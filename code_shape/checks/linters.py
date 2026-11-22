@@ -40,7 +40,7 @@ def _exe(name: str) -> str:
 def _run(settings: Settings, tmp: Path, cmd: list[str], ok_codes=(0, 1), cwd: Path | None = None) -> str:
     """Run a tool from a scratch folder (so caches land there, not in the project)."""
     tool = cmd[0]
-    cmd = [_exe(tool), *cmd[1:], *settings.extra_args.get(tool, [])]
+    cmd = [_exe(tool), *cmd[1:], *settings.tools.extra_args.get(tool, [])]
     env = {
         **os.environ,
         "PYTHONDONTWRITEBYTECODE": "1",
@@ -229,7 +229,19 @@ VULTURE_LINE = re.compile(r"^(.+?):(\d+): (.+?) \((\d+)% confidence")
 
 
 def vulture(settings: Settings, tmp: Path) -> GroupResult:
-    cmd = ["vulture", *_pkg_dirs(settings), "--min-confidence", str(int(settings.limits["dead_code_confidence"]))]
+    # Whitelist files are extra paths for vulture: the names they mention count as used.
+    # Resolved from the project root here, because vulture itself runs from a scratch folder.
+    whitelists = [settings.root / name for name in settings.tools.dead_code_whitelist]
+    missing = [settings.rel(path) for path in whitelists if not path.is_file()]
+    if missing:
+        raise ToolError(f"dead_code_whitelist file not found (paths are relative to the project root): {missing}")
+    cmd = [
+        "vulture",
+        *_pkg_dirs(settings),
+        *map(str, whitelists),
+        "--min-confidence",
+        str(int(settings.limits["dead_code_confidence"])),
+    ]
     if settings.pyproject:
         cmd += ["--config", str(settings.pyproject)]
     result = GroupResult("vulture")

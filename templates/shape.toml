@@ -18,6 +18,10 @@ config_modules = ["myapp/config.py"]
 # gates = ["file-lines", "function-complexity", ...]
 # skip = ["mypy"]               # check groups to switch off entirely
 # exclude = ["myapp/generated/*"]
+# Names a framework uses by reflection, so vulture wrongly calls them dead code: mention
+# them in a vulture whitelist file (paths relative to the project root; see README,
+# "False positives in dead code"), e.g. a line `Server.should_exit` in vulture_whitelist.py.
+# dead_code_whitelist = ["vulture_whitelist.py"]
 
 [tool.shape.limits]
 # --- files, classes, folders ---

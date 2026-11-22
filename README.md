@@ -153,6 +153,33 @@ Architecture contracts are never baselined by the kit: use import-linter's own
 - Don't edit the baseline by hand, add `# noqa`, or raise a limit. If you believe the
   rule is wrong here, stop and ask a human.
 
+## False positives in dead code
+
+vulture reads the code, not the running program, so it reports names that a framework
+uses by reflection, e.g. uvicorn setting `Server.should_exit`. Before you call something
+a false positive, make sure nothing could call it; dead code is usually really dead.
+For the real exceptions, write a vulture whitelist: a `.py` file that mentions each name
+(it is only parsed, never run), and list it in `[tool.shape]`:
+
+```python
+# vulture_whitelist.py: names used by frameworks, not by our code
+Server.should_exit  # uvicorn sets it to stop the server
+```
+
+```toml
+[tool.shape]
+dead_code_whitelist = ["vulture_whitelist.py"]   # paths relative to the project root
+```
+
+Keep the file outside your packages, so the other checks don't lint it. To start one,
+`vulture myapp --min-confidence 60 --make-whitelist > vulture_whitelist.py` lists
+everything the kit reports today; delete the lines for code that is really dead.
+For whole families of names, vulture's own `[tool.vulture] ignore_names = ["on_*"]` in
+pyproject.toml also works, and decorators go in
+`[tool.shape.extra_args] vulture = ["--ignore-decorators", "@app.route"]`.
+Like the baseline, every exception is a line in a file that shows up in the PR diff.
+Agents: ask a human before adding to the whitelist.
+
 ## Deliberately left out
 
 | Tool / idea | Why not |
@@ -206,7 +233,7 @@ code-shape-kit/
 ## Proof the gates work
 
 ```bash
-make install && make test      # 19 tests: inject a violation, expect a clear failure, revert; ratchet; baseline rules
+make install && make test      # 20 tests: inject a violation, expect a clear failure, revert; ratchet; baseline rules
 make self-check                # the kit passes its own gates with an empty baseline
 ```
 

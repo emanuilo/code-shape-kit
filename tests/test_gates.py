@@ -153,6 +153,23 @@ def test_copy_paste_fails(project: Path) -> None:
     assert code == 1 and "[duplicate-code]" in out, out
 
 
+def test_dead_code_whitelist_silences_a_false_positive(project: Path) -> None:
+    service = project / "tidy_app" / "inventory" / "service.py"
+    service.write_text(service.read_text() + "\n\nclass Server:\n    should_exit = False\n\n\nprint(Server)\n")
+    code, out = shape(project, "check", "--only", "vulture")
+    assert code == 1 and "[dead-code]" in out and "should_exit" in out, out
+
+    (project / "vulture_whitelist.py").write_text("Server.should_exit  # set by the framework\n")
+    pyproject = project / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text().replace(
+            "[tool.shape]\n", '[tool.shape]\ndead_code_whitelist = ["vulture_whitelist.py"]\n'
+        )
+    )
+    code, out = shape(project, "check", "--only", "vulture")  # resolved from --root, not the cwd
+    assert code == 0, out
+
+
 def test_baseline_ratchet(project: Path) -> None:
     service = project / "tidy_app" / "inventory" / "service.py"
     original = service.read_text()

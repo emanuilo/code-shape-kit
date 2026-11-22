@@ -205,7 +205,7 @@ limit = "fan_out"
 tool = "vulture"
 title = "Unused code"
 protects = "Dead code misleads readers and agents into editing or copying it."
-fix = "Delete it. If a framework calls it by name, add it to the vulture whitelist (see README)."
+fix = "Delete it. If a framework uses it by name (reflection), it is not dead: mention it in a vulture whitelist file and list that file in [tool.shape] dead_code_whitelist (README: 'False positives in dead code')."
 unit = ""
 
 [dependencies]

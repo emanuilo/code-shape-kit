@@ -78,6 +78,14 @@ DEFAULT_GATES = [
 
 
 @dataclass
+class ToolOptions:
+    """Per-tool settings that are not limits."""
+
+    extra_args: dict[str, list[str]] = field(default_factory=dict)  # tool -> extra command-line arguments
+    dead_code_whitelist: list[str] = field(default_factory=list)  # vulture whitelist files, relative to root
+
+
+@dataclass
 class Settings:
     root: Path
     packages: list[str]
@@ -90,7 +98,7 @@ class Settings:
     exclude: list[str]
     concepts: dict[str, list[str] | dict]  # name -> terms, or {terms, home}
     config_file: Path
-    extra_args: dict[str, list[str]] = field(default_factory=dict)
+    tools: ToolOptions = field(default_factory=ToolOptions)
 
     @property
     def pyproject(self) -> Path | None:
@@ -143,8 +151,15 @@ def load(root: Path, config: Path | None = None) -> Settings:
         exclude=shape.get("exclude", []),
         concepts=shape.get("concepts", {}),
         config_file=config_file,
-        extra_args=shape.get("extra_args", {}),
+        tools=ToolOptions(
+            extra_args=shape.get("extra_args", {}),
+            dead_code_whitelist=_as_list(shape.get("dead_code_whitelist", [])),
+        ),
     )
+
+
+def _as_list(value: str | list[str]) -> list[str]:
+    return [value] if isinstance(value, str) else list(value)
 
 
 def _guess_package(src: Path) -> str:
