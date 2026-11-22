@@ -153,6 +153,61 @@ def test_copy_paste_fails(project: Path) -> None:
     assert code == 1 and "[duplicate-code]" in out, out
 
 
+# Loaded by the tools the kit runs (their PYTHONPATH is the project), it makes directory
+# listings come back sorted or reversed: macOS and Linux list folders in different orders.
+FAKE_FS_ORDER = """
+import os
+
+_ORDER = os.environ.get("FAKE_FS_ORDER")
+if _ORDER:
+    _scandir, _listdir = os.scandir, os.listdir
+
+    class _Listing:
+        def __init__(self, path="."):
+            with _scandir(path) as entries:
+                self._entries = sorted(entries, key=lambda e: e.name, reverse=_ORDER == "reverse")
+
+        def __iter__(self):
+            return iter(self._entries)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def close(self):
+            pass
+
+    os.scandir = _Listing
+    os.listdir = lambda path=".": sorted(_listdir(path), reverse=_ORDER == "reverse")
+"""
+
+
+def test_copy_paste_findings_do_not_depend_on_file_order(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # One block copied into three files; two copies also share the line before it, so
+    # the three pairs match over different lengths. pylint then reports two of the
+    # three pairs, and which two depended on the order it found the files in.
+    block = "".join(f"    v{i} = len(names) * {i} + sum(map(len, names[{i}:]))\n" for i in range(12))
+    block += "    return " + " + ".join(f"v{i}" for i in range(12)) + "\n"
+    folder = project / "tidy_app" / "copies"
+    folder.mkdir()
+    (folder / "__init__.py").write_text("")
+    shared = "    names = sorted(set(names))\n"
+    for name, before in (("first", ""), ("second", shared), ("third", shared)):
+        (folder / f"{name}.py").write_text(f"def {name}(names: list[str]) -> int:\n{before}{block}")
+    (project / "sitecustomize.py").write_text(FAKE_FS_ORDER)
+
+    monkeypatch.setenv("FAKE_FS_ORDER", "sorted")  # e.g. the laptop that recorded the baseline
+    shape(project, "baseline", "--only", "pylint")
+    recorded = (project / ".code-shape-baseline.json").read_text()
+    assert recorded.count("duplicate-code|") == 2, recorded
+
+    monkeypatch.setenv("FAKE_FS_ORDER", "reverse")  # e.g. CI on another OS
+    code, out = shape(project, "check", "--only", "pylint")
+    assert code == 0, out
+
+
 def test_dead_code_whitelist_silences_a_false_positive(project: Path) -> None:
     service = project / "tidy_app" / "inventory" / "service.py"
     service.write_text(service.read_text() + "\n\nclass Server:\n    should_exit = False\n\n\nprint(Server)\n")

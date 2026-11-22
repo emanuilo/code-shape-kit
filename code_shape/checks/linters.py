@@ -58,6 +58,28 @@ def _pkg_dirs(settings: Settings) -> list[str]:
     return [str(p) for p in settings.package_dirs()]
 
 
+def _module_files(settings: Settings) -> list[str]:
+    """The modules pylint would find in the package folders, as a sorted list of files.
+
+    Given a folder, pylint lists it in file-system order, which differs between macOS
+    and Linux. Its duplicate-code check depends on that order: when one block is copied
+    into three files, the order decides which pairs of files get reported. A sorted list
+    gives the same findings everywhere. Like pylint, folders without an __init__.py
+    inside a regular package are skipped.
+    """
+    files: list[str] = []
+    for pkg in settings.package_dirs():
+        if not pkg.is_dir():
+            files.append(str(pkg))  # let pylint report the bad path itself
+            continue
+        namespace = not (pkg / "__init__.py").exists()
+        for path in sorted(p for p in pkg.rglob("*") if p.suffix in (".py", ".pyi") and p.is_file()):
+            folders = path.relative_to(pkg).parents  # path's folders below pkg, and "."
+            if namespace or all((pkg / d / "__init__.py").exists() for d in folders):
+                files.append(str(path))
+    return files
+
+
 def _toml_str(text: str) -> str:
     return json.dumps(text)  # a JSON string is a valid TOML basic string
 
@@ -191,7 +213,7 @@ def pylint(settings: Settings, tmp: Path) -> GroupResult:
     rcfile.write_text("")
     cmd = [
         "pylint",
-        *_pkg_dirs(settings),
+        *_module_files(settings),
         f"--rcfile={rcfile}",
         "--persistent=n",
         "--score=n",
