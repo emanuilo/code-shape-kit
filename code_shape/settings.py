@@ -45,6 +45,8 @@ DEFAULT_BANNED_API = {
     "os.putenv": "Read settings through the config module instead of the environment.",
 }
 
+DEFAULT_BASELINE = ".code-shape-baseline.json"  # relative to the project root
+
 # Checks that fail ENFORCE mode by default. Everything else is a tracked metric.
 DEFAULT_GATES = [
     "file-lines",
@@ -86,13 +88,21 @@ class ToolOptions:
 
 
 @dataclass
+class GateOptions:
+    """What `code-shape check` enforces, and the baseline file it compares against."""
+
+    checks: list[str]  # check ids that fail the build
+    baseline: Path  # absolute; [tool.shape] baseline is relative to the project root
+
+
+@dataclass
 class Settings:
     root: Path
     packages: list[str]
     src: Path
     tests: Path
     limits: dict[str, float]
-    gates: list[str]
+    gate: GateOptions
     banned_api: dict[str, dict]
     skip: list[str]
     exclude: list[str]
@@ -145,7 +155,10 @@ def load(root: Path, config: Path | None = None) -> Settings:
         src=src,
         tests=root / shape.get("tests", "tests"),
         limits={**DEFAULT_LIMITS, **shape.get("limits", {})},
-        gates=shape.get("gates", DEFAULT_GATES),
+        gate=GateOptions(
+            checks=shape.get("gates", DEFAULT_GATES),
+            baseline=root / shape.get("baseline", DEFAULT_BASELINE),
+        ),
         banned_api=banned,
         skip=shape.get("skip", []),
         exclude=shape.get("exclude", []),

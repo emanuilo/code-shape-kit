@@ -262,3 +262,27 @@ def test_report_never_fails_and_lists_offenders(project: Path) -> None:
     assert code == 0, out
     text = out_file.read_text()
     assert "## Worst offenders" in text and "classify" in text
+
+
+def test_baseline_location_setting_is_used_by_baseline_check_and_tighten(project: Path) -> None:
+    pyproject = project / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text().replace("[tool.shape]\n", '[tool.shape]\nbaseline = "shape/known.json"\n')
+    )
+    service = project / "tidy_app" / "inventory" / "service.py"
+    original = service.read_text()
+    service.write_text(original + "# filler\n" * 520)
+
+    shape(project, "baseline", "--only", "sizes")  # creates the missing folder
+    configured = project / "shape" / "known.json"
+    assert configured.exists() and not (project / ".code-shape-baseline.json").exists()
+    assert shape(project, "check", "--only", "sizes")[0] == 0
+
+    before = configured.read_text()
+    service.write_text(original + "# filler\n" * 510)
+    shape(project, "tighten", "--only", "sizes")
+    assert configured.read_text() != before  # tightened in place
+    assert shape(project, "check", "--only", "sizes")[0] == 0
+
+    code, out = shape(project, "check", "--only", "sizes", "--baseline", str(project / "other.json"))
+    assert code == 1 and "NEW" in out, out  # the command-line flag wins over the setting

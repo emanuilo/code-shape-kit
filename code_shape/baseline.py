@@ -69,6 +69,7 @@ def save(path: Path, entries: Entries) -> None:
         "about": "Known shape violations. Shrink it with `code-shape tighten`; never edit by hand to add.",
         "entries": entries,
     }
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 

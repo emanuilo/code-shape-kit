@@ -119,6 +119,11 @@ check groups). `templates/code-shape.mk` has the same as `make shape-report`,
 - a known problem got **better** but the baseline wasn't updated. Run `code-shape tighten`
   and commit. That is the ratchet: once orders.py is down to 560 lines, 600 fails.
 
+The baseline file sits in the project root by default. To keep it elsewhere, set a path
+relative to the project root, e.g. `baseline = ".code-shape/baseline.json"` under
+`[tool.shape]`; `baseline` and `tighten` create the folder if needed. `--baseline FILE`
+overrides the setting.
+
 Inline suppressions (`# noqa`) are ignored by the shape checks on purpose. The baseline
 is the one visible place for exceptions, and every addition to it shows up in the PR diff.
 Architecture contracts are never baselined by the kit: use import-linter's own
@@ -233,7 +238,7 @@ code-shape-kit/
 ## Proof the gates work
 
 ```bash
-make install && make test      # 20 tests: inject a violation, expect a clear failure, revert; ratchet; baseline rules
+make install && make test      # 23 tests: inject a violation, expect a clear failure, revert; ratchet; baseline rules
 make self-check                # the kit passes its own gates with an empty baseline
 ```
 

@@ -27,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.mode == "check":  # history-based checks are tracked metrics, never gates
         groups = [g for g in groups if g not in ("history", "concepts")]
     results = run_all(settings, groups)
-    baseline_path = Path(args.baseline) if args.baseline else settings.root / ".code-shape-baseline.json"
+    baseline_path = Path(args.baseline) if args.baseline else settings.gate.baseline
 
     if args.mode == "report":
         table = trend(settings, args.trend, results) if args.trend else None
@@ -41,14 +41,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.mode == "check":
             return 1
     if args.mode == "baseline":
-        bl.save(baseline_path, bl.record(results, settings.gates))
+        bl.save(baseline_path, bl.record(results, settings.gate.checks))
         print(f"code-shape: baseline written to {baseline_path}. Commit it.")
         return 0
     if args.mode == "tighten":
-        bl.save(baseline_path, bl.tighten(results, settings.gates, bl.load(baseline_path)))
+        bl.save(baseline_path, bl.tighten(results, settings.gate.checks, bl.load(baseline_path)))
         print(f"code-shape: baseline tightened at {baseline_path}. Commit it.")
         return 0
-    return _check(results, settings.gates, bl.load(baseline_path))
+    return _check(results, settings.gate.checks, bl.load(baseline_path))
 
 
 def _check(results, gates: list[str], baseline: bl.Entries) -> int:
@@ -82,7 +82,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("mode", choices=["report", "check", "baseline", "tighten"])
     parser.add_argument("--root", default=".", help="project root (default: current folder)")
     parser.add_argument("--config", help="TOML file with [tool.shape] (default: <root>/pyproject.toml)")
-    parser.add_argument("--baseline", help="baseline file (default: <root>/.code-shape-baseline.json)")
+    parser.add_argument(
+        "--baseline", help="baseline file (default: [tool.shape] baseline, else <root>/.code-shape-baseline.json)"
+    )
     parser.add_argument("--out", help="report file (default: <root>/code-shape-report.md)")
     parser.add_argument("--trend", type=int, default=0, metavar="N", help="report: also sample N past commits")
     parser.add_argument("--only", help="comma-separated check groups to run, e.g. sizes,ruff")

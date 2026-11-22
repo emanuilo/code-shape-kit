@@ -59,7 +59,7 @@ def _summary_rows(settings: Settings, by_group: dict[str, GroupResult], findings
         count = sum(1 for f in findings if f.check == check)
         found = str(count) if group and group.ok else "not run"
         limit = fmt(settings.limits[meta["limit"]]) if "limit" in meta else ""
-        mark = "gate" if check in settings.gates else "tracked"
+        mark = "gate" if check in settings.gate.checks else "tracked"
         rows.append([meta["title"], meta["protects"], found, limit, mark])
     return rows
 
