@@ -38,3 +38,15 @@ def test_contracts_are_never_baselined() -> None:
     broken = Finding("import-contracts", "pyproject.toml", "Layers")
     assert bl.record(results(broken), GATES) == {}
     assert bl.compare(results(broken), GATES, {}).new == [broken]
+
+
+def test_findings_sharing_a_key_count_the_worst_in_any_order() -> None:
+    # A property's getter and setter are both `Knob.level`: same key, two numbers.
+    getter = Finding("file-lines", "app/big.py", value=700, limit=500)
+    setter = Finding("file-lines", "app/big.py", value=600, limit=500)
+    for listed in ((getter, setter), (setter, getter)):
+        base = bl.record(results(*listed), GATES)
+        assert base == {"sizes": {"file-lines|app/big.py|": 700}}
+        for again in ((getter, setter), (setter, getter)):
+            comparison = bl.compare(results(*again), GATES, base)
+            assert not (comparison.new or comparison.worse or comparison.improved)

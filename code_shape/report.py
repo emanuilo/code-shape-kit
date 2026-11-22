@@ -43,7 +43,8 @@ def render(settings: Settings, results: list[GroupResult], trend: Table | None =
 def _offenders(findings: list[Finding]) -> list[str]:
     out = []
     for check, meta in CATALOG.items():
-        hits = sorted((f for f in findings if f.check == check), key=lambda f: -(f.value or 0))
+        # Ties broken by key, so the report reads the same whatever order the tools listed findings in.
+        hits = sorted((f for f in findings if f.check == check), key=lambda f: (-(f.value or 0), f.key))
         if hits:
             out += [f"### {meta['title']} ({len(hits)})", "", f"{meta['protects']} **Fix:** {meta['fix']}", ""]
             out += [f"- {f.describe()}" for f in hits[:TOP]]

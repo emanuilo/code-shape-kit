@@ -28,7 +28,22 @@ class Comparison:
 
 
 def gated(results: list[GroupResult], gates: list[str]) -> dict[str, list[Finding]]:
-    return {r.name: [f for f in r.findings if f.check in gates] for r in results if r.ok}
+    return {r.name: _worst_per_key([f for f in r.findings if f.check in gates]) for r in results if r.ok}
+
+
+def _worst_per_key(findings: list[Finding]) -> list[Finding]:
+    """One finding per key, the one with the biggest number.
+
+    Two places can share a key, e.g. a property's getter and setter (both `Order.total`).
+    Keeping the worst makes the recorded and compared number independent of the order
+    the tool listed them in.
+    """
+    worst: dict[str, Finding] = {}
+    for f in findings:
+        old = worst.get(f.key)
+        if old is None or (f.value or 0) > (old.value or 0):
+            worst[f.key] = f
+    return list(worst.values())
 
 
 def baselineable(finding: Finding) -> bool:
