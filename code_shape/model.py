@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-import sys
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:  # pragma: no cover
-    import tomli as tomllib
 
 CATALOG: dict[str, dict] = tomllib.loads((Path(__file__).parent / "catalog.toml").read_text(encoding="utf-8"))
 

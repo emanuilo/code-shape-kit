@@ -6,10 +6,9 @@ explains why each number was chosen.
 
 from __future__ import annotations
 
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-
-from code_shape.model import tomllib
 
 DEFAULT_LIMITS = {
     "file_lines": 500,

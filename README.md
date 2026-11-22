@@ -77,6 +77,8 @@ so an agent can fix it without asking.
 
 ## Install
 
+Needs Python 3.11 or newer (import-linter and grimp, which the kit drives, require it).
+
 ```bash
 # the kit + the pinned tool versions it drives
 pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit"
