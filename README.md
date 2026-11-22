@@ -84,7 +84,7 @@ Needs Python 3.11 or newer (import-linter and grimp, which the kit drives, requi
 pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit"
 
 # in CI, pin a tag (or a commit sha) so the gates only change when you bump it
-pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.1.2"
+pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.1.3"
 ```
 
 `pip install git+https://github.com/emanuilo/code-shape-kit` alone installs only the
@@ -128,6 +128,15 @@ Inline suppressions (`# noqa`) are ignored by the shape checks on purpose. The b
 is the one visible place for exceptions, and every addition to it shows up in the PR diff.
 Architecture contracts are never baselined by the kit: use import-linter's own
 `ignore_imports` list for existing violations (see `templates/importlinter.toml`).
+
+**Upgrading to 0.1.3.** Copy-pasted code is now measured the same way on every OS
+(before, a block copied into three or more files could be reported for different pairs of
+files on macOS and Linux). The `duplicate-code` entries keep their shape, but for such
+blocks the file pair or the number of lines in the baseline can change, so the first check
+may show them as NEW and IMPROVED. To upgrade safely, run `code-shape check` with the new
+version and confirm that only `duplicate-code` entries moved and that no copied block got
+bigger (`code-shape report --only pylint` lists them all). Then run `code-shape baseline`,
+check that its diff touches only `duplicate-code` lines, and commit it.
 
 ## New project
 

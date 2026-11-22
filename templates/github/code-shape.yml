@@ -24,7 +24,7 @@ jobs:
       # The project must be installed too: mypy and deptry need its dependencies.
       # KIT: a path if you vendored the kit (e.g. tools/code-shape-kit). To install from
       # GitHub instead, replace the pip line with:
-      #   pip install -e . "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.1.2"
+      #   pip install -e . "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.1.3"
       - name: Install project and code-shape-kit
         env:
           KIT: tools/code-shape-kit
