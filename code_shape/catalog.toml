@@ -205,7 +205,7 @@ limit = "fan_out"
 tool = "vulture"
 title = "Unused code"
 protects = "Dead code misleads readers and agents into editing or copying it."
-fix = "First check whether something uses it by name at runtime, which vulture can't see: a router or decorator that registers it, getattr or a registry, a plugin or an entry point (a CLI command, an HTTP handler). If nothing does, delete it. If something does, ask a human to approve a dead-code whitelist entry ([tool.shape] dead_code_whitelist; README: 'False positives in dead code')."
+fix = "First check whether something uses it by name at runtime, which vulture can't see: a router or decorator that registers it, getattr or a registry, a plugin or an entry point (a CLI command, an HTTP handler). If nothing does, delete it. If something does, ask a human to approve a dead-code whitelist entry ([tool.shape] dead_code_whitelist; see https://github.com/emanuilo/code-shape-kit/blob/main/docs/reference.md#false-positives-in-dead-code)."
 unit = ""
 
 [dependencies]

@@ -34,8 +34,9 @@ config_modules = ["myapp/config.py"]
 # Where the baseline lives, relative to the project root (`--baseline FILE` overrides it).
 # baseline = ".code-shape/baseline.json"   # default: .code-shape-baseline.json
 # Names a framework uses by reflection, so vulture wrongly calls them dead code: mention
-# them in a vulture whitelist file (paths relative to the project root; see README,
-# "False positives in dead code"), e.g. a line `Server.should_exit` in vulture_whitelist.py.
+# them in a vulture whitelist file (paths relative to the project root; see
+# https://github.com/emanuilo/code-shape-kit/blob/main/docs/reference.md#false-positives-in-dead-code),
+# e.g. a line `Server.should_exit` in vulture_whitelist.py.
 # dead_code_whitelist = ["vulture_whitelist.py"]
 
 [tool.shape.limits]

@@ -105,8 +105,8 @@ def _skeleton(contract: str) -> str:
     """The template's example layers, each optional (in parentheses) until the module exists."""
     note = (
         "# No code yet, so these are the template's example names. Replace them with your own\n"
-        "# layers (DESIGNING_THE_SHAPE.md). A name in parentheses is optional: drop the\n"
-        "# parentheses once the module exists.\n"
+        "# layers (https://github.com/emanuilo/code-shape-kit/blob/main/docs/designing-the-shape.md).\n"
+        "# A name in parentheses is optional: drop the parentheses once the module exists.\n"
     )
     contract = _swap(contract, r"^layers = \[$", note + "layers = [")
     return re.sub(r'^(    ")([^"]+)(",)', _optional, contract, flags=re.MULTILINE)

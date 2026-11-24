@@ -11,3 +11,6 @@ dist/
 .import_linter_cache/
 code-shape-report.md
 reports/
+
+# Sources for README images (render with design/render.sh)
+design/

@@ -2,8 +2,9 @@
 # the names with your own (or run `code-shape init`, which drafts the layers contract
 # from your imports).
 
-# Each contract is one decision from DESIGNING_THE_SHAPE.md, written down so a tool can
-# guard it. Delete the contracts you don't need.
+# Each contract is one decision about the project's shape, written down so a tool can
+# guard it (https://github.com/emanuilo/code-shape-kit/blob/main/docs/designing-the-shape.md).
+# Delete the contracts you don't need.
 #
 # The names in the examples are PLACEHOLDERS, shown for a small web shop:
 #   myapp                -> your top-level package

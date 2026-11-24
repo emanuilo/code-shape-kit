@@ -2,7 +2,8 @@
 
 Tools can guard a shape. They can't choose one. This page is the human part: a short,
 practical way to decide how a project should be split, and how to turn each decision
-into a rule the kit enforces.
+into a rule the kit enforces. The settings named below are described in the
+[reference](reference.md).
 
 The **shape** of a project is how its code is split into files and folders, and which
 parts may use which. A good shape means most changes touch a few files in one place.
@@ -129,7 +130,8 @@ breaks the rule, so say what to do instead.
 Changing a rule later is a decision too, and the easiest way for an agent to get a red
 check green. In CI, `code-shape check --base origin/main` lists every rule a pull request
 loosens (a limit raised, a gate or contract removed, an allowance widened, a baseline entry
-or a suppression comment added), and `code_shape/templates/CODEOWNERS` makes the files that hold the
+or a suppression comment added; see [Rules loosened](reference.md#rules-loosened---base-ref)), and
+the [CODEOWNERS template](../code_shape/templates/CODEOWNERS) makes the files that hold the
 rules need a human's review. When you approve such a change, you are changing the shape:
 check that it is still the one you decided on.
 
