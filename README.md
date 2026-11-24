@@ -71,7 +71,7 @@ Gate = fails `code-shape check`. Tracked = report only.
 | | Type errors, also in functions without annotations; `# type: ignore` without an error code, or no longer needed | interfaces between modules drifting apart | mypy | gate |
 | Silenced checks | Suppression comments (`# noqa`, `# type: ignore`, `# pylint: disable`, `# pragma: no cover`, `# complexipy: ignore`, `# nosec`), counted per function and kind | problems hidden instead of fixed, and the habit copied | custom (tokenize) | gate |
 | | Suppression without an error code (bare `# noqa`, `# type: ignore`) | every rule silenced on the line, also future ones | ruff PGH003, PGH004 | gate |
-| Risky habits | Errors swallowed or caught too broadly (bare `except:`, `except Exception`, except that only passes, continues or re-raises) | failures hidden; bugs show up far from their cause | ruff E722, BLE001, S110, S112, TRY203 | gate |
+| Risky habits | Errors swallowed or caught too broadly (bare `except:`, `except Exception`, except that only passes, continues or re-raises; `except Exception` that logs with `logger.exception(...)` passes, for `logging`, loguru and `logger_objects`) | failures hidden; bugs show up far from their cause | ruff E722, BLE001, S110, S112, TRY203 | gate |
 | | Commented-out code | stale code that gets copied back in | ruff ERA001 | gate |
 | | `print()` outside the entry point (`cli.py`, `__main__.py`, or `output_modules`) | leftover debugging; output mixed into library code | ruff T201, T203 | gate |
 | | Mutable or computed default argument | one call changing what the next one gets | ruff B006, B008 | gate |
@@ -103,7 +103,7 @@ the trend extracts old commits with a safety filter added in 3.11.4).
 pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit"
 
 # in CI, pin a tag (or a commit sha) so the gates only change when you bump it
-pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.2.0"
+pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.2.1"
 ```
 
 `pip install git+https://github.com/emanuilo/code-shape-kit` alone installs only the
@@ -168,7 +168,8 @@ origin/main - needs human approval", every change that makes the gates easier to
 
 - baseline entries added, or their numbers raised;
 - limits raised, gates removed, `skip` or `exclude` grown, `packages` shrunk, `extra_args` added;
-- `config_modules`, `output_modules` or a `banned_api` `allowed` list widened, or a banned API dropped;
+- `config_modules`, `output_modules` or a `banned_api` `allowed` list widened, a banned API dropped,
+  or a logger added to `logger_objects`;
 - the dead-code whitelist grown (the setting or the file), `[tool.vulture]` ignores or
   excludes added, `[tool.deptry]` ignores, excludes or `known_first_party` added;
 - `[tool.mypy]` `ignore_missing_imports` switched on or given more modules, or `strict` switched off;
@@ -203,6 +204,15 @@ show up once as NEW and IMPROVED. Upgrade the same way as above. Also new: a typ
 per function and mypy error code instead of per file (so fixing one error while adding
 another no longer passes): re-record them with `code-shape baseline --only mypy` and
 check that the diff touches only `type-errors` lines.
+
+**Upgrading to 0.2.1.** The kit runs ruff without the project's ruff config, so
+`swallowed-errors` used to flag the deliberate `except Exception: logger.exception(...)`
+when the logger was loguru's. loguru's `logger` is now recognised like `logging`'s: logging
+the traceback with `logger.exception(...)` (or `exc_info=True`) passes, while
+`logger.error(f"... {e}")` still fails. A project's own logger object goes in
+`[tool.shape] logger_objects = ["myapp.log.logger"]` (added to loguru's; adding one is
+listed by `--base` as a rule loosened). Baselined `swallowed-errors` entries that this
+fixes show up as IMPROVED: run `code-shape baseline --only ruff` and commit it.
 
 **New gates in 0.2.0.** New gates arrive with an upgrade: suppression
 comments (`inline-suppression`), swallowed errors, bare suppressions, commented-out code,

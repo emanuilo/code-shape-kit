@@ -200,6 +200,51 @@ def test_one_more_swallowed_error_in_a_function_is_worse(project: Path) -> None:
     assert code == 1 and "WORSE (was 1)" in out and "S110 in risky" in out, out
 
 
+LOGGED = """
+
+def keep_going(log_from: str) -> None:
+    while True:
+        try:
+            keep_going(log_from)
+        except Exception as e:
+            {call}
+"""
+
+
+@pytest.mark.parametrize(
+    ("logger", "call", "passes"),
+    [
+        ("from loguru import logger", 'logger.exception("sync failed")', True),  # keeps the traceback
+        ("from loguru import logger", 'logger.error(f"sync failed: {e}")', False),  # loses it
+        ("import logging\n\nlogger = logging.getLogger()", 'logger.error("sync failed", exc_info=True)', True),
+    ],
+)
+def test_catching_everything_and_logging_the_traceback_passes(
+    project: Path, logger: str, call: str, passes: bool
+) -> None:
+    service = project / "tidy_app" / "inventory" / "service.py"
+    service.write_text(service.read_text() + f"\n{logger}\n" + LOGGED.format(call=call))
+    code, out = shape(project, "check", "--only", "ruff")
+    assert (code == 0) == passes, out
+    if not passes:
+        assert "[swallowed-errors]" in out and "logger.exception(...)" in out, out
+
+
+def test_a_project_logger_passes_once_listed_in_logger_objects(project: Path) -> None:
+    (project / "tidy_app" / "log.py").write_text("import logging\n\nlogger = logging.getLogger()\n")
+    service = project / "tidy_app" / "inventory" / "service.py"
+    call = 'logger.exception("sync failed")'
+    service.write_text(service.read_text() + "\nfrom tidy_app.log import logger\n" + LOGGED.format(call=call))
+    code, out = shape(project, "check", "--only", "ruff")
+    assert code == 1 and "[swallowed-errors]" in out, out
+    pyproject = project / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text().replace("[tool.shape]\n", '[tool.shape]\nlogger_objects = ["tidy_app.log.logger"]\n')
+    )
+    code, out = shape(project, "check", "--only", "ruff")
+    assert code == 0, out
+
+
 def test_suppression_comments_are_counted(project: Path) -> None:
     service = project / "tidy_app" / "inventory" / "service.py"
     original = service.read_text()

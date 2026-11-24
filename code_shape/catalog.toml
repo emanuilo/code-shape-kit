@@ -234,7 +234,7 @@ unit = "comments"
 tool = "ruff"
 title = "Error swallowed or caught too broadly"
 protects = "A bare `except:`, `except Exception`, or an except that only passes, continues or re-raises hides real failures, so bugs surface far from their cause."
-fix = "Catch only the exceptions you expect and can handle, and handle them (or let them propagate). Don't wrap code in try/except just to make an error go away."
+fix = "Catch the specific exceptions you expect and handle them, or re-raise. If catching everything is deliberate (a loop that must keep running), log it with `logger.exception(...)` (or `logging`'s `exc_info=True`), which keeps the traceback; a project logger other than logging or loguru goes in [tool.shape] logger_objects. Don't wrap code in try/except just to make an error go away."
 unit = "uses"
 
 [blanket-suppression]

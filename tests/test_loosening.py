@@ -218,3 +218,13 @@ def test_only_looser_limits_are_listed(tmp_path: Path, old: str, new: str, expec
     config = tmp_path / "pyproject.toml"
     before, after = (parse(tmp_path, config, f"{LIMITS}{limit}\n") for limit in (old, new))
     assert _settings(before, after) == ([f"[tool.shape.limits] {expected}"] if expected else [])
+
+
+def test_a_new_logger_object_is_listed(tmp_path: Path) -> None:
+    config = tmp_path / "pyproject.toml"
+    before = parse(tmp_path, config, '[tool.shape]\npackages = ["app"]\n')
+    after = parse(tmp_path, config, '[tool.shape]\npackages = ["app"]\nlogger_objects = ["app.log.logger"]\n')
+    assert _settings(before, after) == [
+        "[tool.shape] logger_objects (their logger.exception passes swallowed-errors): added `app.log.logger`"
+    ]
+    assert _settings(after, before) == []  # dropping one is stricter

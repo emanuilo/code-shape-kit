@@ -58,9 +58,14 @@ DEFAULT_BASELINE = ".code-shape-baseline.json"  # relative to the project root
 # leftover debugging, or output that belongs in the entry point (or a logger).
 DEFAULT_OUTPUT_MODULES = ["*/cli.py", "*/__main__.py"]
 
+# Loggers ruff treats like `logging`'s, so `except Exception: logger.exception(...)` passes
+# swallowed-errors (the traceback is kept). [tool.shape] logger_objects adds to these.
+DEFAULT_LOGGER_OBJECTS = ["loguru.logger"]
+
 # Every key [tool.shape] may have.
 KNOWN_KEYS = {"packages", "src", "tests", "config_modules", "gates", "skip", "exclude", "baseline"}
 KNOWN_KEYS |= {"dead_code_whitelist", "limits", "banned_api", "concepts", "extra_args", "output_modules"}
+KNOWN_KEYS |= {"logger_objects"}
 
 # Checks that fail ENFORCE mode by default. Everything else is a tracked metric.
 DEFAULT_GATES = [
@@ -110,6 +115,7 @@ class ToolOptions:
     extra_args: dict[str, list[str]] = field(default_factory=dict)  # tool -> extra command-line arguments
     dead_code_whitelist: list[str] = field(default_factory=list)  # vulture whitelist files, relative to root
     output_modules: list[str] = field(default_factory=lambda: list(DEFAULT_OUTPUT_MODULES))  # may print
+    logger_objects: list[str] = field(default_factory=lambda: list(DEFAULT_LOGGER_OBJECTS))  # e.g. "myapp.log.logger"
 
 
 @dataclass
@@ -217,6 +223,7 @@ def parse(root: Path, config_file: Path, text: str) -> Settings:
             extra_args=shape.get("extra_args", {}),
             dead_code_whitelist=_as_list(shape.get("dead_code_whitelist", [])),
             output_modules=_as_list(shape.get("output_modules", DEFAULT_OUTPUT_MODULES)),
+            logger_objects=list(dict.fromkeys(DEFAULT_LOGGER_OBJECTS + _as_list(shape.get("logger_objects", [])))),
         ),
     )
 
@@ -226,6 +233,8 @@ def _validate(shape: dict) -> None:
     problems = [f"unknown setting `{key}`" for key in sorted(set(shape) - KNOWN_KEYS)]
     problems += [f"unknown limit `{key}`" for key in sorted(set(shape.get("limits", {})) - set(DEFAULT_LIMITS))]
     problems += [f"unknown check `{check}` in gates" for check in shape.get("gates", []) if check not in CATALOG]
+    if not _dotted_names(shape.get("logger_objects", [])):
+        problems.append('`logger_objects` must list import paths of logger objects, e.g. "myapp.log.logger"')
     for name, spec in shape.get("concepts", {}).items():
         for term in _concept(spec)["terms"]:
             try:
@@ -239,6 +248,12 @@ def _validate(shape: dict) -> None:
 def _concept(spec: str | list[str] | dict) -> dict:
     spec = spec if isinstance(spec, dict) else {"terms": spec}
     return {"terms": _as_list(spec.get("terms", [])), "home": spec.get("home", "")}
+
+
+def _dotted_names(value: object) -> bool:
+    """A string or list of strings, each an import path (`module.name`)."""
+    names = [value] if isinstance(value, str) else value
+    return isinstance(names, list) and all(isinstance(name, str) and "." in name.strip(".") for name in names)
 
 
 def _as_list(value: str | list[str]) -> list[str]:

@@ -131,6 +131,11 @@ def _settings(old: Settings, new: Settings) -> list[str]:
     found += _added("[tool.shape] exclude", old.exclude, new.exclude)
     found += _added("[tool.shape] dead_code_whitelist", old.tools.dead_code_whitelist, new.tools.dead_code_whitelist)
     found += _added("[tool.shape] output_modules (may print)", old.tools.output_modules, new.tools.output_modules)
+    found += _added(
+        "[tool.shape] logger_objects (their logger.exception passes swallowed-errors)",
+        old.tools.logger_objects,
+        new.tools.logger_objects,
+    )
     for tool, args in sorted(new.tools.extra_args.items()):
         found += _added(f"[tool.shape.extra_args] {tool}", old.tools.extra_args.get(tool, []), args)
     widened: dict[str, list[str]] = {}  # pattern -> the restricted APIs it may now use

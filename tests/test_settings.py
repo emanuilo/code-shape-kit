@@ -8,7 +8,7 @@ from code_shape.settings import load
 
 
 def project(tmp_path: Path, shape: str) -> Path:
-    (tmp_path / "app").mkdir()
+    (tmp_path / "app").mkdir(parents=True)
     (tmp_path / "app" / "__init__.py").write_text("")
     (tmp_path / "pyproject.toml").write_text(f'[tool.shape]\npackages = ["app"]\n{shape}')
     return tmp_path
@@ -20,6 +20,8 @@ def project(tmp_path: Path, shape: str) -> Path:
         ('gates = ["file-line"]\n', "unknown check `file-line` in gates"),
         ('excludes = ["app/gen/*"]\n', "unknown setting `excludes`"),
         ("[tool.shape.limits]\nfile_line = 300\n", "unknown limit `file_line`"),
+        ('logger_objects = ["logger"]\n', "`logger_objects` must list import paths"),
+        ("logger_objects = 3\n", "`logger_objects` must list import paths"),
     ],
 )
 def test_a_typo_in_the_config_is_an_error(tmp_path: Path, shape: str, message: str) -> None:
@@ -77,3 +79,9 @@ def test_a_concept_home_can_be_a_package(tmp_path: Path) -> None:
         Commit("3", "2026-01-03", "", ("app/cli.py",)),
     ]
     assert _co_changes("app/refunds", history, 30) == [2, 0.5, "cli.py (1)"]
+
+
+def test_logger_objects_are_added_to_loguru(tmp_path: Path) -> None:
+    assert load(project(tmp_path / "plain", "")).tools.logger_objects == ["loguru.logger"]
+    settings = load(project(tmp_path / "own", 'logger_objects = "app.log.logger"\n'))
+    assert settings.tools.logger_objects == ["loguru.logger", "app.log.logger"]

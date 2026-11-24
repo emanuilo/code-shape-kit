@@ -63,6 +63,8 @@ def ruff(settings: Settings, tmp: Path) -> GroupResult:
         ",".join(RUFF_RULES),
         "--config",
         f"lint.flake8-tidy-imports.banned-api = {{{banned}}}",
+        "--config",  # so `except Exception: logger.exception(...)` passes swallowed-errors for these loggers too
+        f"lint.logger-objects = {json.dumps(settings.tools.logger_objects)}",  # a JSON list of strings is valid TOML
     ]
     for _, limit, setting in RUFF_RULES.values():
         if limit and setting:
