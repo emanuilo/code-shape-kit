@@ -1,6 +1,6 @@
 """All check groups, in report order.
 
-A group is either an established tool (wrapped in linters.py) or a small custom
+A group is either an established tool (wrapped in the linters package) or a small custom
 check for a gap no tool covers. Disable groups with [tool.shape] skip = [...].
 """
 
@@ -11,9 +11,10 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
-from code_shape.checks import concepts, graph, history, linters, sizes, tests_mirror
+from code_shape.checks import concepts, graph, history, linters, sizes, suppressions, tests_mirror
 from code_shape.model import GroupResult
 from code_shape.settings import Settings
+from code_shape.source import excluded
 
 TOOL_GROUPS: dict[str, Callable[[Settings, Path], GroupResult]] = {
     "ruff": linters.ruff,
@@ -27,6 +28,7 @@ TOOL_GROUPS: dict[str, Callable[[Settings, Path], GroupResult]] = {
 CUSTOM_GROUPS: dict[str, Callable[[Settings], GroupResult]] = {
     "sizes": sizes.run,
     "graph": graph.run,
+    "suppressions": suppressions.run,
     "history": history.run,
     "concepts": concepts.run,
     "tests": tests_mirror.run,
@@ -41,6 +43,7 @@ ALL_GROUPS = [
     "vulture",
     "deptry",
     "mypy",
+    "suppressions",
     "history",
     "concepts",
     "tests",
@@ -57,9 +60,12 @@ def run_all(settings: Settings, groups: list[str] | None = None) -> list[GroupRe
                 continue
             try:
                 if name in TOOL_GROUPS:
-                    results.append(TOOL_GROUPS[name](settings, Path(tmp)))
+                    result = TOOL_GROUPS[name](settings, Path(tmp))
                 else:
-                    results.append(CUSTOM_GROUPS[name](settings))
+                    result = CUSTOM_GROUPS[name](settings)
             except (linters.ToolError, subprocess.SubprocessError, OSError, ValueError) as exc:
-                results.append(GroupResult(name, error=str(exc)))
+                result = GroupResult(name, error=str(exc))
+            # The tools are given whole package folders, so [tool.shape] exclude is applied here, for all of them.
+            result.findings = [f for f in result.findings if not excluded(settings, f.path)]
+            results.append(result)
     return results

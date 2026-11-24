@@ -6,9 +6,12 @@ explains why each number was chosen.
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from code_shape.model import CATALOG
 
 DEFAULT_LIMITS = {
     "file_lines": 500,
@@ -38,6 +41,10 @@ DEFAULT_LIMITS = {
     "max_changeset_files": 30,
     "history_days": 365,
 }
+# Limits where a lower number lets more through: fewer commits are read, so fewer files look
+# coupled. For every other limit a higher number is looser (e.g. dead_code_confidence: 90 reports
+# less than 60; duplicate_lines: only longer copies count).
+LOWER_IS_LOOSER = {"max_changeset_files", "history_days"}
 
 DEFAULT_BANNED_API = {
     "os.environ": "Read settings through the config module instead of the environment.",
@@ -46,6 +53,14 @@ DEFAULT_BANNED_API = {
 }
 
 DEFAULT_BASELINE = ".code-shape-baseline.json"  # relative to the project root
+
+# The modules that may print: a command line's output is its job; anywhere else a print is
+# leftover debugging, or output that belongs in the entry point (or a logger).
+DEFAULT_OUTPUT_MODULES = ["*/cli.py", "*/__main__.py"]
+
+# Every key [tool.shape] may have.
+KNOWN_KEYS = {"packages", "src", "tests", "config_modules", "gates", "skip", "exclude", "baseline"}
+KNOWN_KEYS |= {"dead_code_whitelist", "limits", "banned_api", "concepts", "extra_args", "output_modules"}
 
 # Checks that fail ENFORCE mode by default. Everything else is a tracked metric.
 DEFAULT_GATES = [
@@ -76,6 +91,15 @@ DEFAULT_GATES = [
     "dead-code",
     "dependencies",
     "type-errors",
+    "inline-suppression",
+    "swallowed-errors",
+    "blanket-suppression",
+    "commented-out-code",
+    "print-call",
+    "mutable-default",
+    "wildcard-import",
+    "security-risk",
+    "boolean-flag-args",
 ]
 
 
@@ -85,6 +109,7 @@ class ToolOptions:
 
     extra_args: dict[str, list[str]] = field(default_factory=dict)  # tool -> extra command-line arguments
     dead_code_whitelist: list[str] = field(default_factory=list)  # vulture whitelist files, relative to root
+    output_modules: list[str] = field(default_factory=lambda: list(DEFAULT_OUTPUT_MODULES))  # may print
 
 
 @dataclass
@@ -106,7 +131,7 @@ class Settings:
     banned_api: dict[str, dict]
     skip: list[str]
     exclude: list[str]
-    concepts: dict[str, list[str] | dict]  # name -> terms, or {terms, home}
+    concepts: dict[str, dict]  # name -> {terms: [...], home: "path or ''"}
     config_file: Path
     tools: ToolOptions = field(default_factory=ToolOptions)
 
@@ -137,18 +162,42 @@ class Settings:
         return p.as_posix()
 
 
+class ConfigError(SystemExit):
+    """The configuration can't be used; stops the command with this message."""
+
+
 def load(root: Path, config: Path | None = None) -> Settings:
     root = root.resolve()
+    if config and not config.is_file():
+        raise ConfigError(f"code-shape: config file not found: {config}")
     config_file = config or root / "pyproject.toml"
-    data = tomllib.loads(config_file.read_text(encoding="utf-8")) if config_file.exists() else {}
-    shape = data.get("tool", {}).get("shape", {})
+    text = config_file.read_text(encoding="utf-8") if config_file.exists() else ""
+    settings = parse(root, config_file, text)
+    missing = [
+        f"concept `{name}`: home `{spec['home']}` does not exist (a file or folder, relative to the project root)"
+        for name, spec in settings.concepts.items()
+        if spec["home"] and not (root / spec["home"]).exists()
+    ]
+    if missing:
+        raise ConfigError("code-shape: bad [tool.shape] config: " + "; ".join(missing))
+    return settings
+
+
+def parse(root: Path, config_file: Path, text: str) -> Settings:
+    """Settings from the text of a config file (e.g. as it was at another git commit)."""
+    shape = tomllib.loads(text).get("tool", {}).get("shape", {})
+    _validate(shape)
     src = root / shape.get("src", "src" if (root / "src").is_dir() else ".")
     packages = shape.get("packages") or [_guess_package(src)]
     banned = {
         name: {"msg": msg, "allowed": shape.get("config_modules", [])} for name, msg in DEFAULT_BANNED_API.items()
     }
     for name, rule in shape.get("banned_api", {}).items():
-        banned[name] = rule if isinstance(rule, dict) else {"msg": rule, "allowed": []}
+        rule = rule if isinstance(rule, dict) else {"msg": rule}
+        banned[name] = {
+            "msg": rule.get("msg", f"`{name}` is restricted."),
+            "allowed": _as_list(rule.get("allowed", [])),
+        }
     return Settings(
         root=root,
         packages=packages,
@@ -162,13 +211,34 @@ def load(root: Path, config: Path | None = None) -> Settings:
         banned_api=banned,
         skip=shape.get("skip", []),
         exclude=shape.get("exclude", []),
-        concepts=shape.get("concepts", {}),
+        concepts={name: _concept(spec) for name, spec in shape.get("concepts", {}).items()},
         config_file=config_file,
         tools=ToolOptions(
             extra_args=shape.get("extra_args", {}),
             dead_code_whitelist=_as_list(shape.get("dead_code_whitelist", [])),
+            output_modules=_as_list(shape.get("output_modules", DEFAULT_OUTPUT_MODULES)),
         ),
     )
+
+
+def _validate(shape: dict) -> None:
+    """A typo in [tool.shape] must not quietly switch a rule off."""
+    problems = [f"unknown setting `{key}`" for key in sorted(set(shape) - KNOWN_KEYS)]
+    problems += [f"unknown limit `{key}`" for key in sorted(set(shape.get("limits", {})) - set(DEFAULT_LIMITS))]
+    problems += [f"unknown check `{check}` in gates" for check in shape.get("gates", []) if check not in CATALOG]
+    for name, spec in shape.get("concepts", {}).items():
+        for term in _concept(spec)["terms"]:
+            try:
+                re.compile(term)
+            except re.error as exc:
+                problems.append(f"concept `{name}`: `{term}` is not a valid regex ({exc})")
+    if problems:
+        raise ConfigError("code-shape: bad [tool.shape] config: " + "; ".join(problems))
+
+
+def _concept(spec: str | list[str] | dict) -> dict:
+    spec = spec if isinstance(spec, dict) else {"terms": spec}
+    return {"terms": _as_list(spec.get("terms", [])), "home": spec.get("home", "")}
 
 
 def _as_list(value: str | list[str]) -> list[str]:
@@ -177,6 +247,8 @@ def _as_list(value: str | list[str]) -> list[str]:
 
 def _guess_package(src: Path) -> str:
     found = sorted(p.parent.name for p in src.glob("*/__init__.py") if p.parent.name != "tests")
-    if found:
+    if len(found) == 1:
         return found[0]
-    raise SystemExit('code-shape: set [tool.shape] packages = ["yourpackage"] in pyproject.toml')
+    # With several candidates, picking one would quietly leave the others unchecked.
+    which = f" (found {', '.join(found)})" if found else ""
+    raise ConfigError(f'code-shape: set [tool.shape] packages = ["yourpackage"] in pyproject.toml{which}')

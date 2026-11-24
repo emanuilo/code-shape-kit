@@ -20,6 +20,8 @@ def run(settings: Settings) -> GroupResult:
     sys.path.insert(0, str(settings.src))
     try:
         graph = grimp.build_graph(*settings.packages, cache_dir=None)
+    except grimp.exceptions.GrimpException as exc:  # e.g. a syntax error: the graph would be incomplete
+        raise ValueError(f"grimp could not build the import graph: {exc}") from exc
     finally:
         sys.path.remove(str(settings.src))
     modules = sorted(graph.modules)
@@ -30,14 +32,15 @@ def run(settings: Settings) -> GroupResult:
 
     for module in modules:
         if len(imports[module]) > fan_out_limit:
-            result.findings.append(
-                Finding("fan-out", module_path(settings, module), module, len(imports[module]), fan_out_limit)
-            )
+            detail = "imports " + ", ".join(sorted(imports[module]))
+            path = module_path(settings, module)
+            result.findings.append(Finding("fan-out", path, module, len(imports[module]), fan_out_limit, detail=detail))
     cycles = _cycles(graph, modules)
     for cycle in cycles:
         names = sorted(cycle)
+        detail = "imports in the cycle: " + "; ".join(_imports_within(graph, names))
         result.findings.append(
-            Finding("import-cycles", module_path(settings, names[0]), " <-> ".join(names), len(names))
+            Finding("import-cycles", module_path(settings, names[0]), " <-> ".join(names), len(names), detail=detail)
         )
 
     result.tables.append(_connections(modules, imports, importers))
@@ -64,6 +67,17 @@ def _connections(modules: list[str], imports: dict[str, set[str]], importers: di
         rows,
         "Hubs with both high fan-in and high fan-out are the riskiest to change.",
     )
+
+
+def _imports_within(graph: grimp.ImportGraph, modules: list[str]) -> list[str]:
+    """Each import between the given modules, as "a -> b (l.3)": the ones to break up."""
+    found = []
+    for importer in modules:
+        for imported in sorted(graph.find_modules_directly_imported_by(importer) & set(modules)):
+            lines = sorted({d["line_number"] for d in graph.get_import_details(importer=importer, imported=imported)})
+            where = f" (l.{', '.join(map(str, lines))})" if lines else ""
+            found.append(f"{importer} -> {imported}{where}")
+    return found
 
 
 def _cycles(graph: grimp.ImportGraph, modules: list[str]) -> list[set[str]]:

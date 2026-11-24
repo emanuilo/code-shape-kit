@@ -205,7 +205,7 @@ limit = "fan_out"
 tool = "vulture"
 title = "Unused code"
 protects = "Dead code misleads readers and agents into editing or copying it."
-fix = "Delete it. If a framework uses it by name (reflection), it is not dead: mention it in a vulture whitelist file and list that file in [tool.shape] dead_code_whitelist (README: 'False positives in dead code')."
+fix = "First check whether something uses it by name at runtime, which vulture can't see: a router or decorator that registers it, getattr or a registry, a plugin or an entry point (a CLI command, an HTTP handler). If nothing does, delete it. If something does, ask a human to approve a dead-code whitelist entry ([tool.shape] dead_code_whitelist; README: 'False positives in dead code')."
 unit = ""
 
 [dependencies]
@@ -219,8 +219,72 @@ unit = ""
 tool = "mypy"
 title = "Type errors"
 protects = "Type checks keep the interfaces between modules consistent when one side changes."
-fix = "Fix the types so caller and callee agree; don't add `# type: ignore` without a reason."
+fix = "Fix the types so caller and callee agree. Don't add `# type: ignore` or remove annotations to get past it: untyped functions are checked too, and an ignore needs a human's approval."
 unit = "errors"
+
+# ---------- silenced checks and risky habits ----------
+[inline-suppression]
+tool = "suppressions"
+title = "Comment that silences a check"
+protects = "A `# noqa`, `# type: ignore`, `# pylint: disable` or `# pragma: no cover` hides a problem a tool found instead of fixing it, and the next agent copies the habit."
+fix = "Remove the comment and fix the problem the tool reported. If the tool is wrong here, stop and ask a human: only a human approves a suppression (it is then recorded with `code-shape baseline`)."
+unit = "comments"
+
+[swallowed-errors]
+tool = "ruff"
+title = "Error swallowed or caught too broadly"
+protects = "A bare `except:`, `except Exception`, or an except that only passes, continues or re-raises hides real failures, so bugs surface far from their cause."
+fix = "Catch only the exceptions you expect and can handle, and handle them (or let them propagate). Don't wrap code in try/except just to make an error go away."
+unit = "uses"
+
+[blanket-suppression]
+tool = "ruff"
+title = "Suppression comment without an error code"
+protects = "A bare `# noqa` or `# type: ignore` silences every rule on the line, including problems added later."
+fix = "Remove the comment and fix the problem. If a human approved silencing one rule, name it: `# type: ignore[code]`, `# noqa: CODE`."
+unit = "uses"
+
+[commented-out-code]
+tool = "ruff"
+title = "Commented-out code"
+protects = "Dead code in comments goes stale, misleads readers, and gets copied back in by agents."
+fix = "Delete it; git history keeps the old version."
+unit = "uses"
+
+[print-call]
+tool = "ruff"
+title = "print() outside the entry point"
+protects = "Prints in library code are leftover debugging, or output that belongs to the command line, so the program can't be used quietly or tested cleanly."
+fix = "Return the value and print it in the entry point (cli.py / __main__.py, or the modules in [tool.shape] output_modules), or use the logging module."
+unit = "uses"
+
+[mutable-default]
+tool = "ruff"
+title = "Mutable or computed default argument"
+protects = "A default like `[]`, `{}` or `make()` is created once and shared by every call, so one call changes what the next one gets."
+fix = "Default to None and create the value inside the function: `items: list | None = None` then `items = items or []`."
+unit = "uses"
+
+[wildcard-import]
+tool = "ruff"
+title = "Wildcard import (`from x import *`)"
+protects = "Nobody (reader, agent or tool) can tell where a name comes from, and the module's surface changes whenever x changes."
+fix = "Import the names you use explicitly: `from x import a, b`."
+unit = "uses"
+
+[security-risk]
+tool = "ruff"
+title = "Risky code: shell=True, SQL built from strings, hard-coded password, eval/exec"
+protects = "These are the usual ways in for injection attacks and leaked secrets, and agents copy them from nearby code."
+fix = "Pass commands as a list without shell=True; use query parameters instead of building SQL with f-strings or +; read secrets from the config module, not the source; replace eval/exec with explicit code (ast.literal_eval for literals). The message names the rule."
+unit = "uses"
+
+[boolean-flag-args]
+tool = "ruff"
+title = "True/False passed by position"
+protects = "A call like `save(data, True)` doesn't say what True means, and a flag argument usually means the function does two jobs."
+fix = "Make the flag keyword-only (add `*,` before it), or split the function into two named functions."
+unit = "uses"
 
 # ---------- locality of change (history and concepts) ----------
 [change-coupling]

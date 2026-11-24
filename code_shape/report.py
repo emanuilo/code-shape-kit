@@ -10,7 +10,8 @@ from code_shape.settings import Settings
 TOP = 10
 
 
-def render(settings: Settings, results: list[GroupResult], trend: Table | None = None) -> str:
+def render(settings: Settings, results: list[GroupResult], trend: Table | None = None, warning: str = "") -> str:
+    """`warning`: markdown shown right below the title (the rules loosened since --base)."""
     by_group = {r.name: r for r in results}
     findings = [f for r in results for f in r.findings]
     out = [
@@ -19,6 +20,7 @@ def render(settings: Settings, results: list[GroupResult], trend: Table | None =
         f"_Generated {date.today().isoformat()} by code-shape-kit. REPORT mode: this never fails a build. "
         f"Packages: {', '.join(settings.packages)}._",
         "",
+        *([warning] if warning else []),
         "## Summary",
         "",
         "Gate = fails `code-shape check` (CI) for new violations. Tracked = shown here only.",

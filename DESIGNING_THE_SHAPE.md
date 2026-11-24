@@ -118,12 +118,20 @@ move code until it doesn't. This one exercise catches most shape problems early.
 | A package's insides are private | `protected` contract, or name them `_private.py` + `private_modules` contract | `[tool.importlinter]` |
 | A third-party package only in its adapter | `protected` contract on that package, or `banned_api` with `allowed` | either |
 | Environment variables only in config | `config_modules` (on by default) | `[tool.shape]` |
+| Only entry points print | `output_modules` (default: `cli.py`, `__main__.py`) | `[tool.shape]` |
 | Sizes and complexity | `[tool.shape.limits]` (the defaults are sensible) | `[tool.shape]` |
 | Where each concept lives | `[tool.shape.concepts]` with a `home` | `[tool.shape]` (tracked) |
 | Tests mirror the source | `tests/<path>/test_<module>.py` | tracked |
 
 Write `broken_contract_guidance` in each contract. It is what an agent reads when it
 breaks the rule, so say what to do instead.
+
+Changing a rule later is a decision too, and the easiest way for an agent to get a red
+check green. In CI, `code-shape check --base origin/main` lists every rule a pull request
+loosens (a limit raised, a gate or contract removed, an allowance widened, a baseline entry
+or a suppression comment added), and `templates/CODEOWNERS` makes the files that hold the
+rules need a human's review. When you approve such a change, you are changing the shape:
+check that it is still the one you decided on.
 
 ## 8. Two examples
 

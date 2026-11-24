@@ -20,16 +20,17 @@ def run(settings: Settings) -> GroupResult:
             continue
         inside = path.relative_to(settings.src).parts[1:]  # drop the top package name
         expected = "/".join([*inside[:-1], f"test_{path.stem}.py"])
+        shown = f"{settings.rel(settings.tests)}/{expected}"
         stems.add(path.stem)
         if expected in tests:
             mirrored += 1
         elif f"test_{path.stem}.py" in by_name:
             elsewhere += 1
-            detail = f"tests exist but not at tests/{expected}"
+            detail = f"tests exist but not at {shown}"
             result.findings.append(Finding("test-mirror", settings.rel(path), detail=detail))
         else:
             missing += 1
-            result.findings.append(Finding("test-mirror", settings.rel(path), detail=f"no tests/{expected}"))
+            result.findings.append(Finding("test-mirror", settings.rel(path), detail=f"no {shown}"))
     total = mirrored + elsewhere + missing
     orphans = sorted(t for t in tests if t.rsplit("/", 1)[-1][5:-3] not in stems)
     result.metrics = {

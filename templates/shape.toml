@@ -11,13 +11,20 @@ packages = ["myapp"]            # your top-level package(s)
 # src = "src"                   # set if you use the src/ layout (auto-detected)
 tests = "tests"
 # The ONLY modules allowed to read environment variables (os.environ / os.getenv).
+# Paths and globs here, in `exclude` and in banned_api `allowed` are relative to the
+# project root: with the src/ layout, write "src/myapp/config.py".
 config_modules = ["myapp/config.py"]
+# The only modules allowed to print (print-call). Default: every cli.py and __main__.py.
+# output_modules = ["*/cli.py", "*/__main__.py", "myapp/report.py"]
 # Checks that fail `code-shape check`. Leave out to use the default list (all static
 # checks). History-based checks (change-coupling, concept-spread) and test-mirror are
 # never gates by default: they are trends to watch, not rules to block a PR on.
+# A typo in a check id (or in a limit name) is an error, so no rule is switched off by accident.
+# Removing a gate, adding to skip/exclude, or raising a limit is a "rule loosened": with
+# `code-shape check --base origin/main` (the CI template does this) it is listed for a human.
 # gates = ["file-lines", "function-complexity", ...]
 # skip = ["mypy"]               # check groups to switch off entirely
-# exclude = ["myapp/generated/*"]
+# exclude = ["myapp/generated/*"]   # left out of every check
 # Where the baseline lives, relative to the project root (`--baseline FILE` overrides it).
 # baseline = ".code-shape/baseline.json"   # default: .code-shape-baseline.json
 # Names a framework uses by reflection, so vulture wrongly calls them dead code: mention

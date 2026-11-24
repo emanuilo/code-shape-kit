@@ -26,8 +26,8 @@ COLUMNS = [
 
 
 def trend(settings: Settings, samples: int, current: list[GroupResult]) -> Table:
-    git = ["git", "-C", str(settings.root)]
-    top = Path(_git(git, "rev-parse", "--show-toplevel").strip())
+    top = Path(_git(["git", "-C", str(settings.root)], "rev-parse", "--show-toplevel").strip()).resolve()
+    git = ["git", "-C", str(top)]  # the paths below are relative to the repository, not to the project
     paths = [p.relative_to(top).as_posix() for p in settings.package_dirs()]
     history = _git(git, "log", "--format=%h %ad", "--date=short", "--", *paths).splitlines()[::-1]
     picked = history[:: max(1, len(history) // samples)][-samples:]
@@ -43,9 +43,11 @@ def trend(settings: Settings, samples: int, current: list[GroupResult]) -> Table
 
 def _run_at(settings: Settings, git: list[str], top: Path, paths: list[str], sha: str) -> list[GroupResult]:
     """Extract the package folders as they were at `sha` into a temp dir and check them there."""
+    # `git archive` fails on a path that is missing at sha, e.g. a package added later.
+    present = [p for p in _git(git, "ls-tree", "-z", "--name-only", sha, "--", *paths).split("\0") if p]
     with tempfile.TemporaryDirectory(prefix="code-shape-trend-") as tmp:
         archive = subprocess.run(
-            [*git, "archive", "--format=tar", sha, "--", *paths], capture_output=True, check=True
+            [*git, "archive", "--format=tar", sha, "--", *present], capture_output=True, check=True
         ).stdout
         with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
             tar.extractall(tmp, filter="data")

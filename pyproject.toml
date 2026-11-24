@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "code-shape-kit"
-version = "0.1.3"
+version = "0.2.0"
 description = "Deterministic checks that keep a Python project's shape (structure, size, coupling) good"
 readme = "README.md"
-requires-python = ">=3.11"  # import-linter 2.17 and grimp 3.20 need 3.11+
+requires-python = ">=3.11.4"  # import-linter 2.17 and grimp 3.20 need 3.11+; tarfile's filter="data" 3.11.4+
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Emanuilo Jovanovic" }]
@@ -51,7 +51,7 @@ packages = ["code_shape"]
 tests = "tests"
 skip = ["deptry"]  # the kit's own runtime deps are tiny; tools are an extra on purpose
 # The one place allowed to touch os.environ: it builds the environment for the tools it runs.
-config_modules = ["code_shape/checks/linters.py"]
+config_modules = ["code_shape/checks/linters/running.py"]
 
 [tool.shape.concepts]
 baseline = ["baseline", "ratchet"]
@@ -69,6 +69,7 @@ containers = ["code_shape"]
 layers = [
     "__main__",
     "cli",
+    "loosening",
     "report | baseline | trend",
     "checks",
     "source",
@@ -87,6 +88,7 @@ modules = [
     "code_shape.checks.graph",
     "code_shape.checks.linters",
     "code_shape.checks.tests_mirror",
+    "code_shape.checks.suppressions",
 ]
 
 [tool.pytest.ini_options]

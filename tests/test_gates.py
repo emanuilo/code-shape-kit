@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -135,8 +136,233 @@ def test_violation_fails_with_clear_message_then_passes_after_revert(project: Pa
     assert code == 1, out
     assert expected in out, out
     assert "fix:" in out  # every failure tells the agent what to do instead
+    assert "To pass, fix the code" in out and "need a human's approval" in out  # and not to loosen the rules
     path.write_text(original)
     assert shape(project)[0] == 0
+
+
+# name -> (text appended to tidy_app/inventory/service.py, the check that must fail)
+RUFF_VIOLATIONS = {
+    "swallowed error": (
+        "\n\ndef risky() -> None:\n    try:\n        risky()\n    except Exception:\n        pass\n",
+        "[swallowed-errors]",
+    ),
+    "blanket ignore": ("\nLIMIT = 3  # type: ignore\n", "[blanket-suppression]"),
+    "commented-out code": ("\n# total = sum(stock.values())\n", "[commented-out-code]"),
+    "print in a library module": ("\nprint('debug')\n", "[print-call]"),
+    "mutable default": (
+        "\n\ndef collect(items: list[str] = []) -> list[str]:\n    return items\n",
+        "[mutable-default]",
+    ),
+    "wildcard import": ("\nfrom pathlib import *\n", "[wildcard-import]"),
+    "eval": ("\n\ndef run(code: str) -> None:\n    eval(code)\n", "[security-risk]"),
+    "shell=True": (
+        "\nimport subprocess\n\nsubprocess.run('ls', shell=True, check=False)\n",
+        "[security-risk]",
+    ),
+    "boolean flag": (
+        "\n\ndef save(data: str, force: bool = False) -> str:\n    return data if force else ''\n",
+        "[boolean-flag-args]",
+    ),
+}
+
+
+@pytest.mark.parametrize("name", RUFF_VIOLATIONS)
+def test_risky_habits_fail(project: Path, name: str) -> None:
+    text, expected = RUFF_VIOLATIONS[name]
+    service = project / "tidy_app" / "inventory" / "service.py"
+    service.write_text(service.read_text() + text)
+    code, out = shape(project, "check", "--only", "ruff")
+    assert code == 1 and expected in out and "fix:" in out, out
+
+
+def test_print_is_allowed_where_output_modules_say(project: Path) -> None:
+    # tidy_app/cli.py prints its output and passes; a print in the service fails until it is allowed there
+    service = project / "tidy_app" / "inventory" / "service.py"
+    service.write_text(service.read_text() + "\nprint('debug')\n")
+    assert shape(project, "check", "--only", "ruff")[0] == 1
+    pyproject = project / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text().replace("[tool.shape]\n", '[tool.shape]\noutput_modules = ["*/cli.py", "*/service.py"]\n')
+    )
+    code, out = shape(project, "check", "--only", "ruff")
+    assert code == 0, out
+
+
+def test_one_more_swallowed_error_in_a_function_is_worse(project: Path) -> None:
+    service = project / "tidy_app" / "inventory" / "service.py"
+    once = "\n\ndef risky() -> None:\n    try:\n        risky()\n    except Exception:\n        pass\n"
+    service.write_text(service.read_text() + once)
+    shape(project, "baseline", "--only", "ruff")
+    assert shape(project, "check", "--only", "ruff")[0] == 0
+    service.write_text(service.read_text() + "    try:\n        risky()\n    except Exception:\n        pass\n")
+    code, out = shape(project, "check", "--only", "ruff")
+    assert code == 1 and "WORSE (was 1)" in out and "S110 in risky" in out, out
+
+
+def test_suppression_comments_are_counted(project: Path) -> None:
+    service = project / "tidy_app" / "inventory" / "service.py"
+    original = service.read_text()
+    service.write_text(original + '\nMARKER = "# noqa"  # a string is not a suppression\n')
+    assert shape(project, "check", "--only", "suppressions")[0] == 0
+
+    service.write_text(original + "\nLIMIT = 3  # noqa: E501\n")
+    code, out = shape(project, "check", "--only", "suppressions")
+    assert code == 1 and "NEW: [inline-suppression]" in out and "noqa in <module>" in out, out
+    assert "only a human approves a suppression" in out, out
+
+    shape(project, "baseline", "--only", "suppressions")  # a human accepted that one
+    assert shape(project, "check", "--only", "suppressions")[0] == 0
+    service.write_text(service.read_text() + "LOWER = 1  # noqa: E501\n")  # one more of the same kind
+    code, out = shape(project, "check", "--only", "suppressions")
+    assert code == 1 and "WORSE (was 1)" in out, out
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("\n\ndef untyped():\n    return 1 + 'a'\n\n\nprint(untyped())\n", "untyped [operator]"),
+        ("\nCOUNT: int = 1  # type: ignore[assignment]\n", "[unused-ignore]"),
+        ("\nCOUNT: int = 'a'  # type: ignore\n", "[ignore-without-code]"),
+    ],
+)
+def test_type_check_covers_untyped_functions_and_ignores(project: Path, text: str, expected: str) -> None:
+    config = project / "tidy_app" / "config.py"
+    config.write_text(config.read_text() + text)
+    code, out = shape(project, "check", "--only", "mypy")
+    assert code == 1 and "[type-errors]" in out and expected in out, out
+
+
+def test_layer_broken_shows_the_contract_guidance(project: Path) -> None:
+    file, text, _ = VIOLATIONS["layer broken"]
+    (project / file).write_text((project / file).read_text() + text)
+    code, out = shape(project, "check", "--only", "import-linter")
+    assert code == 1 and "contract says: A lower layer imported a higher one" in out, out
+
+
+def test_contract_with_ignored_imports_still_fails(project: Path) -> None:
+    # With ignore_imports, lint-imports prints "<name> BROKEN (1 ignored import)".
+    pyproject = project / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text().replace(
+            "exhaustive = true\n", 'exhaustive = true\nignore_imports = ["tidy_app.cli -> tidy_app.config"]\n'
+        )
+    )
+    assert shape(project, "check", "--only", "import-linter")[0] == 0
+    file, text, _ = VIOLATIONS["layer broken"]
+    (project / file).write_text((project / file).read_text() + text)
+    code, out = shape(project, "check", "--only", "import-linter")
+    assert code == 1 and "[import-contracts]" in out and "Layers: entry point" in out, out
+
+
+def test_contract_message_lists_every_group_of_offending_imports(project: Path) -> None:
+    # lint-imports prints one group per illegal pair of layers; all of them must reach the agent
+    config = project / "tidy_app" / "config.py"
+    config.write_text(
+        config.read_text()
+        + "\nfrom tidy_app import cli\nfrom tidy_app.inventory import Inventory\n\nprint(cli, Inventory)\n"
+    )
+    code, out = shape(project, "check", "--only", "import-linter")
+    assert code == 1 and "tidy_app.config -> tidy_app.cli" in out and "tidy_app.config -> tidy_app.inventory" in out, (
+        out
+    )
+
+
+def test_a_type_error_swapped_for_another_is_new(project: Path) -> None:
+    config = project / "tidy_app" / "config.py"
+    original = config.read_text()
+    config.write_text(original + "\n\ndef port() -> int:\n    return 'x'\n\n\nprint(port())\n")
+    shape(project, "baseline", "--only", "mypy")
+    assert shape(project, "check", "--only", "mypy")[0] == 0
+    # fix that one, break another function in the same file: still one error in config.py
+    config.write_text(original + "\n\ndef host() -> str:\n    return 1\n\n\nprint(host())\n")
+    code, out = shape(project, "check", "--only", "mypy")
+    assert code == 1 and "NEW: [type-errors]" in out and "host [return-value]" in out, out
+    assert "Incompatible return value type" in out, out  # the agent sees what is wrong
+
+
+def test_one_more_type_error_shows_the_new_one(project: Path) -> None:
+    config = project / "tidy_app" / "config.py"
+    body = "\n\ndef port(flag: bool) -> int:\n    if flag:\n        return 'x'\n{}    return 1\n\n\nprint(port(True))\n"
+    config.write_text(config.read_text() + body.format(""))
+    shape(project, "baseline", "--only", "mypy")
+    config.write_text(config.read_text().replace("    return 1\n", "    return b'new'\n"))
+    code, out = shape(project, "check", "--only", "mypy")
+    assert code == 1 and "WORSE (was 1)" in out, out
+    assert 'got "bytes", expected "int"' in out and 'got "str", expected "int"' in out, out
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [
+        "[tool.mypy]\nignore_errors = true\n",
+        '[tool.mypy]\ndisable_error_code = ["return-value"]\n',
+        '[tool.mypy]\nexclude = ["config\\\\.py$"]\n',
+        '[[tool.mypy.overrides]]\nmodule = "tidy_app.*"\nignore_errors = true\n',
+        '[[tool.mypy.overrides]]\nmodule = "tidy_app.config"\ndisable_error_code = ["return-value"]\n',
+    ],
+)
+def test_mypy_settings_that_hide_errors_are_left_out(project: Path, setting: str) -> None:
+    pyproject = project / "pyproject.toml"
+    pyproject.write_text(pyproject.read_text() + "\n" + setting)
+    file, text, expected = VIOLATIONS["type error"]
+    (project / file).write_text((project / file).read_text() + text)
+    code, out = shape(project, "check", "--only", "mypy")
+    assert code == 1 and expected in out and "port [return-value]" in out, out
+
+
+@pytest.mark.parametrize("group", ["sizes", "ruff", "complexipy", "pylint", "graph", "vulture", "suppressions"])
+def test_a_file_the_tool_cannot_parse_fails_the_check(project: Path, group: str) -> None:
+    config = project / "tidy_app" / "config.py"
+    config.write_text(config.read_text() + "\n\ndef broken(:\n    pass\n")
+    code, out = shape(project, "check", "--only", group)
+    assert code == 1 and "could not run" in out and "config.py" in out, out
+
+
+def test_excluded_files_are_left_out_of_every_check(project: Path) -> None:
+    generated = project / "tidy_app" / "inventory" / "generated_tables.py"
+    generated.write_text(COMPLEX + "\n\ndef never_called() -> int:\n    return 1\n")
+    assert shape(project)[0] == 1
+    pyproject = project / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text().replace("[tool.shape]\n", '[tool.shape]\nexclude = ["tidy_app/*/generated_*"]\n')
+    )
+    code, out = shape(project)
+    assert code == 0, out
+
+
+def test_unknown_check_group_is_an_error(project: Path) -> None:
+    code, out = shape(project, "check", "--only", "sizes,pylnt")
+    assert code == 1 and "unknown check group(s) ['pylnt']" in out, out
+
+
+def test_a_tracked_check_put_in_gates_is_enforced(project: Path) -> None:
+    pyproject = project / "pyproject.toml"
+    shape_config = '[tool.shape]\ngates = ["concept-spread"]\n'
+    concepts = '[tool.shape.concepts]\nstock = ["stock"]\n[tool.shape.limits]\nconcept_files = 1\n'
+    pyproject.write_text(pyproject.read_text().replace("[tool.shape]\n", shape_config) + concepts)
+    code, out = shape(project)
+    assert code == 1 and "[concept-spread]" in out, out
+
+
+def test_trend_of_a_project_in_a_subfolder_of_the_repository(tmp_path: Path) -> None:
+    project = tmp_path / "apps" / "tidy_app"
+    shutil.copytree(EXAMPLE, project)
+    pyproject = project / "pyproject.toml"
+    pyproject.write_text(pyproject.read_text().replace('packages = ["tidy_app"]', 'packages = ["tidy_app", "extra"]'))
+    git = ["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*git, "init", "-q"], check=True)
+    for message in ("one", "two"):
+        if message == "two":  # a second package that is newer than the first commit
+            (project / "extra").mkdir()
+            (project / "extra" / "__init__.py").write_text("")
+        (project / "tidy_app" / "config.py").write_text((project / "tidy_app" / "config.py").read_text() + "\n")
+        subprocess.run([*git, "add", "."], check=True)
+        subprocess.run([*git, "commit", "-qm", message], check=True)
+    out_file = tmp_path / "report.md"
+    code, out = shape(project, "report", "--only", "sizes", "--trend", "2", "--out", str(out_file))
+    assert code == 0, out
+    assert "re-run on 2 past commits" in out_file.read_text(), out
 
 
 def test_too_many_modules_in_one_folder(project: Path) -> None:
@@ -146,11 +372,45 @@ def test_too_many_modules_in_one_folder(project: Path) -> None:
     assert code == 1 and "[package-files]" in out, out
 
 
-def test_copy_paste_fails(project: Path) -> None:
+def test_copy_paste_fails_and_says_where_each_copy_is(project: Path) -> None:
+    starts = {}
     for file in ("tidy_app/cli.py", "tidy_app/inventory/service.py"):
-        (project / file).write_text((project / file).read_text() + DUPLICATE)
+        text = (project / file).read_text()
+        starts[file] = text.count("\n") + 4  # the line of `total = 0`, the first copied line
+        (project / file).write_text(text + DUPLICATE)
     code, out = shape(project, "check", "--only", "pylint")
     assert code == 1 and "[duplicate-code]" in out, out
+    for file, start in starts.items():
+        assert f"{file}:{start}-" in out, out
+
+
+def test_a_known_copy_pasted_block_copied_once_more_fails(project: Path) -> None:
+    # pylint itself lists only two of the files once a block is in three or more
+    for file in ("tidy_app/cli.py", "tidy_app/inventory/service.py"):
+        (project / file).write_text((project / file).read_text() + DUPLICATE)
+    shape(project, "baseline", "--only", "pylint")
+    assert shape(project, "check", "--only", "pylint")[0] == 0
+    store = project / "tidy_app" / "inventory" / "store.py"
+    store.write_text(store.read_text() + DUPLICATE)
+    code, out = shape(project, "check", "--only", "pylint")
+    assert code == 1 and "NEW: [duplicate-code]" in out and "store.py" in out, out
+    assert "is fixed" not in out, out  # the old pair isn't fixed: it got one more copy
+
+
+def test_removing_one_of_three_known_copies_is_an_improvement(project: Path) -> None:
+    files = ("tidy_app/cli.py", "tidy_app/inventory/service.py", "tidy_app/inventory/store.py")
+    originals = {file: (project / file).read_text() for file in files}
+    for file in files:
+        (project / file).write_text(originals[file] + DUPLICATE)
+    shape(project, "baseline", "--only", "pylint")
+    (project / files[0]).write_text(originals[files[0]])  # fix one copy: the key now names two files
+    code, out = shape(project, "check", "--only", "pylint")
+    assert code == 1 and "NEW" not in out and "IMPROVED" in out and "is now only" in out, out
+    shape(project, "tighten", "--only", "pylint")
+    assert shape(project, "check", "--only", "pylint")[0] == 0
+    (project / files[1]).write_text(originals[files[1]])  # one copy left: no copy at all
+    code, out = shape(project, "check", "--only", "pylint")
+    assert code == 1 and "NEW" not in out and "is fixed" in out, out
 
 
 # Loaded by the tools the kit runs (their PYTHONPATH is the project), it makes directory
@@ -213,6 +473,8 @@ def test_dead_code_whitelist_silences_a_false_positive(project: Path) -> None:
     service.write_text(service.read_text() + "\n\nclass Server:\n    should_exit = False\n\n\nprint(Server)\n")
     code, out = shape(project, "check", "--only", "vulture")
     assert code == 1 and "[dead-code]" in out and "should_exit" in out, out
+    assert "uses it by name at runtime" in out and "If nothing does, delete it" in out, out
+    assert "ask a human to approve a dead-code whitelist entry" in out, out
 
     (project / "vulture_whitelist.py").write_text("Server.should_exit  # set by the framework\n")
     pyproject = project / "pyproject.toml"
@@ -286,3 +548,42 @@ def test_baseline_location_setting_is_used_by_baseline_check_and_tighten(project
 
     code, out = shape(project, "check", "--only", "sizes", "--baseline", str(project / "other.json"))
     assert code == 1 and "NEW" in out, out  # the command-line flag wins over the setting
+
+
+def test_import_cycle_lists_the_imports_in_it(project: Path) -> None:
+    inventory = project / "tidy_app" / "inventory"
+    (inventory / "left.py").write_text("from tidy_app.inventory import right\n\nprint(right)\n")
+    (inventory / "right.py").write_text("\nfrom tidy_app.inventory import left\n\nprint(left)\n")
+    code, out = shape(project, "check", "--only", "graph")
+    assert code == 1 and "[import-cycles]" in out, out
+    assert "tidy_app.inventory.left -> tidy_app.inventory.right (l.1)" in out, out
+    assert "tidy_app.inventory.right -> tidy_app.inventory.left (l.2)" in out, out
+
+
+def test_fan_out_lists_the_imports(project: Path) -> None:
+    pyproject = project / "pyproject.toml"
+    pyproject.write_text(pyproject.read_text() + "\n[tool.shape.limits]\nfan_out = 1\n")
+    code, out = shape(project, "check", "--only", "graph")
+    assert code == 1 and "[fan-out]" in out and "imports tidy_app.config, tidy_app.inventory" in out, out
+
+
+def test_baseline_keeps_the_entries_of_a_check_that_could_not_run_and_fails(project: Path) -> None:
+    service = project / "tidy_app" / "inventory" / "service.py"
+    service.write_text(service.read_text() + "\n\ndef never_called() -> int:\n    return 1\n")
+    shape(project, "baseline", "--only", "vulture")
+    recorded = project / ".code-shape-baseline.json"
+    assert "never_called" in recorded.read_text()
+
+    pyproject = project / "pyproject.toml"  # now vulture can't run: its whitelist is missing
+    pyproject.write_text(
+        pyproject.read_text().replace("[tool.shape]\n", '[tool.shape]\ndead_code_whitelist = ["gone.py"]\n')
+    )
+    code, out = shape(project, "baseline", "--only", "sizes,vulture")
+    assert code == 1 and "could not run" in out and "entries for vulture were kept unchanged" in out, out
+    assert "never_called" in recorded.read_text()
+
+
+def test_python_version_supports_tar_filter() -> None:
+    # trend.py extracts with tarfile's filter="data", added in Python 3.11.4
+    pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
+    assert pyproject["project"]["requires-python"].startswith(">=3.11.4")

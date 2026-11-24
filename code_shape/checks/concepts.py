@@ -1,11 +1,11 @@
 """Locality of change per concept.
 
 You name the project's concepts in [tool.shape.concepts] with a few words or
-regexes each, e.g.  refunds = ["refund", "RefundPolicy"], or with an
-explicit home module:  refunds = {terms = ["refund"], home = "shop/refunds.py"}.
+regexes each, e.g.  refunds = ["refund", "RefundPolicy"], or with an explicit
+home module or package:  refunds = {terms = ["refund"], home = "shop/refunds.py"}.
 For every concept the check reports:
   - code: source files that mention it (a proxy for "files you touch to change it")
-  - home: the module that owns it (default: the file that mentions it most)
+  - home: the module or package that owns it (default: the file that mentions it most)
   - history: when the home file changed, how many other source files changed in
     the same commit, and which ones most often
 A localized concept lives in a few files in a few nearby areas.
@@ -32,12 +32,10 @@ def run(settings: Settings) -> GroupResult:
     result = GroupResult("concepts")
     rows = []
     for name, spec in settings.concepts.items():
-        terms = spec["terms"] if isinstance(spec, dict) else spec
-        pattern = re.compile("|".join(terms), re.IGNORECASE)
+        pattern = re.compile("|".join(spec["terms"]), re.IGNORECASE)
         hits = Counter({rel: len(pattern.findall(text)) for rel, text in texts.items() if pattern.search(text)})
         areas = sorted({unit_of(f, settings.packages) for f in hits})
-        home = spec.get("home", "") if isinstance(spec, dict) else ""
-        home = home or (hits.most_common(1)[0][0] if hits else "")
+        home = spec["home"] or (hits.most_common(1)[0][0] if hits else "")
         verdict = "localized" if len(hits) <= limit and len(areas) <= max_areas else "scattered"
         rows.append(
             [
@@ -85,10 +83,16 @@ def run(settings: Settings) -> GroupResult:
 
 
 def _co_changes(home: str, history: list[Commit], max_files: float) -> list:
-    touching = [c for c in history if home in c.files and len(c.files) <= max_files]
+    """How the home (a module, or a package folder) changes: with how many other files, and which."""
+    folder = home.rstrip("/") + "/"
+
+    def inside(rel: str) -> bool:
+        return rel == home or rel.startswith(folder)
+
+    touching = [c for c in history if any(map(inside, c.files)) and len(c.files) <= max_files]
     if not touching:
         return [0, 0, ""]
-    others = Counter(f for c in touching for f in c.files if f != home)
-    spread = median(len(c.files) - 1 for c in touching)
+    others = Counter(f for c in touching for f in c.files if not inside(f))
+    spread = median(sum(not inside(f) for f in c.files) for c in touching)
     top = ", ".join(f"{f.rsplit('/', 1)[-1]} ({n})" for f, n in others.most_common(3))
     return [len(touching), spread, top]
