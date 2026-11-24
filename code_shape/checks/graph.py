@@ -8,6 +8,7 @@ instability = fan-out / (fan-in + fan-out): 0 = everyone leans on it, 1 = nobody
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import grimp
 
@@ -16,14 +17,19 @@ from code_shape.settings import Settings
 from code_shape.source import module_path
 
 
-def run(settings: Settings) -> GroupResult:
-    sys.path.insert(0, str(settings.src))
+def build(src: Path, packages: list[str]) -> grimp.ImportGraph:
+    """The import graph of the packages found in `src`; ValueError if it can't be built."""
+    sys.path.insert(0, str(src))
     try:
-        graph = grimp.build_graph(*settings.packages, cache_dir=None)
+        return grimp.build_graph(*packages, cache_dir=None)
     except grimp.exceptions.GrimpException as exc:  # e.g. a syntax error: the graph would be incomplete
         raise ValueError(f"grimp could not build the import graph: {exc}") from exc
     finally:
-        sys.path.remove(str(settings.src))
+        sys.path.remove(str(src))
+
+
+def run(settings: Settings) -> GroupResult:
+    graph = build(settings.src, settings.packages)
     modules = sorted(graph.modules)
     imports = {m: graph.find_modules_directly_imported_by(m) for m in modules}
     importers = {m: graph.find_modules_that_directly_import(m) for m in modules}

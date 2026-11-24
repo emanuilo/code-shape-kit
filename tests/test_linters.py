@@ -65,6 +65,7 @@ def test_tool_output_in_an_unexpected_format_is_a_check_that_could_not_run(monke
 
 
 def test_mypy_config_keeps_the_project_settings_that_do_not_hide_errors(tmp_path: Path) -> None:
+    (tmp_path / "app").mkdir()
     (tmp_path / "pyproject.toml").write_text(
         '[tool.shape]\npackages = ["app"]\n'
         '[tool.mypy]\nstrict = true\nignore_errors = true\nplugins = ["pydantic.mypy", "tools/plugin.py:hook"]\n'

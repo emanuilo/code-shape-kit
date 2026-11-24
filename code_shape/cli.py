@@ -4,6 +4,7 @@ code-shape report    run everything, write a markdown report, never fail
 code-shape check     CI gate: fail on violations that are not in the baseline
 code-shape baseline  record today's violations (start of an existing project)
 code-shape tighten   lock in improvements: drop fixed entries from the baseline
+code-shape init      set the kit up in a project: best guesses to review (--dry-run shows them)
 
 With --base REF, check and report also list the rules loosened since REF (a warning).
 """
@@ -16,9 +17,10 @@ import sys
 from pathlib import Path
 
 from code_shape import baseline as bl
-from code_shape import loosening, report
+from code_shape import init, loosening, report
 from code_shape.checks import ALL_GROUPS, run_all
 from code_shape.checks.linters import BOUNDARIES
+from code_shape.init import summary as init_summary
 from code_shape.model import CATALOG, Finding, GroupResult, Table, title
 from code_shape.settings import Settings, load
 from code_shape.trend import trend
@@ -31,6 +33,8 @@ dead-code whitelist to get this green: those changes need a human's approval."""
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.mode == "init" or args.dry_run:
+        return _init(args)
     if (args.base or args.summary) and args.mode not in ("check", "report"):
         raise SystemExit("code-shape: --base and --summary work with check and report only")
     settings = load(Path(args.root), Path(args.config) if args.config else None)
@@ -43,6 +47,20 @@ def main(argv: list[str] | None = None) -> int:
             with Path(args.summary).open("a", encoding="utf-8") as summary:
                 summary.write(loosened.markdown())
     return code
+
+
+def _init(args: argparse.Namespace) -> int:
+    """Writes the setup, or with --dry-run shows it. Takes no other option than --root."""
+    other = [flag for flag in ("config", "baseline", "out", "trend", "only", "base", "summary") if getattr(args, flag)]
+    if args.mode != "init" or other:
+        raise SystemExit("code-shape: --dry-run works with init only, and init takes only --root and --dry-run")
+    plan = init.plan(Path(args.root))
+    print(init_summary.describe(plan, dry_run=args.dry_run), end="")
+    if args.dry_run:
+        print("\n" + init_summary.preview(plan), end="")
+    else:
+        plan.apply()
+    return 0
 
 
 def _groups(args: argparse.Namespace, settings: Settings) -> list[str]:
@@ -143,7 +161,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="code-shape", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("mode", choices=["report", "check", "baseline", "tighten"])
+    parser.add_argument("mode", choices=["report", "check", "baseline", "tighten", "init"])
     parser.add_argument("--root", default=".", help="project root (default: current folder)")
     parser.add_argument("--config", help="TOML file with [tool.shape] (default: <root>/pyproject.toml)")
     parser.add_argument(
@@ -162,6 +180,7 @@ def _parser() -> argparse.ArgumentParser:
         metavar="FILE",
         help="with --base: append that list as markdown to FILE, e.g. $GITHUB_STEP_SUMMARY",
     )
+    parser.add_argument("--dry-run", action="store_true", help="init: show what would be written, change nothing")
     return parser
 
 

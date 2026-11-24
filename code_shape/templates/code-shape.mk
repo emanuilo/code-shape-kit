@@ -1,4 +1,4 @@
-# Include from your project's Makefile:   include tools/code-shape-kit/templates/code-shape.mk
+# Include from your project's Makefile:   include tools/code-shape-kit/code_shape/templates/code-shape.mk
 # Then:  make shape-report | shape-check | shape-baseline | shape-tighten
 #        make shape-check BASE=origin/main   (also lists the rules loosened since BASE)
 

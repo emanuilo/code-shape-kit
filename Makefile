@@ -1,4 +1,4 @@
-# The kit's own tasks. Projects use templates/code-shape.mk instead.
+# The kit's own tasks. Projects use code_shape/templates/code-shape.mk instead.
 .PHONY: install test self-check self-report other-report
 
 install:        ## Install the kit, the tools it drives, and pytest

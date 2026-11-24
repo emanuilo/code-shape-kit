@@ -1,6 +1,6 @@
 """Reads [tool.shape] from pyproject.toml (or a separate TOML file) and fills in defaults.
 
-The defaults below are the kit's recommended limits; templates/shape.toml
+The defaults below are the kit's recommended limits; code_shape/templates/shape.toml
 explains why each number was chosen.
 """
 
@@ -184,7 +184,14 @@ def load(root: Path, config: Path | None = None) -> Settings:
     config_file = config or root / "pyproject.toml"
     text = config_file.read_text(encoding="utf-8") if config_file.exists() else ""
     settings = parse(root, config_file, text)
+    where = "the project root" if settings.src == root else f"`{settings.rel(settings.src)}/`"
     missing = [
+        f"package `{name}`: folder `{settings.rel(path)}` does not exist (packages are looked for in {where}; "
+        "create the package, or fix `packages` or `src`)"
+        for name, path in zip(settings.packages, settings.package_dirs(), strict=True)
+        if not path.is_dir()
+    ]
+    missing += [
         f"concept `{name}`: home `{spec['home']}` does not exist (a file or folder, relative to the project root)"
         for name, spec in settings.concepts.items()
         if spec["home"] and not (root / spec["home"]).exists()
@@ -204,7 +211,7 @@ def parse(root: Path, config_file: Path, text: str) -> Settings:
     """Settings from the text of a config file (e.g. as it was at another git commit)."""
     shape = tomllib.loads(text).get("tool", {}).get("shape", {})
     _validate(shape)
-    src = root / shape.get("src", "src" if (root / "src").is_dir() else ".")
+    src = root / shape["src"] if "src" in shape else default_src(root)
     packages = shape.get("packages") or [_guess_package(src)]
     banned = {
         name: {"msg": msg, "allowed": shape.get("config_modules", [])} for name, msg in DEFAULT_BANNED_API.items()
@@ -288,8 +295,18 @@ def _as_list(value: str | list[str]) -> list[str]:
     return [value] if isinstance(value, str) else list(value)
 
 
+def default_src(root: Path) -> Path:
+    """Where the packages are when [tool.shape] has no `src`: src/ if there is one, else the root."""
+    return root / "src" if (root / "src").is_dir() else root
+
+
+def find_packages(src: Path) -> list[str]:
+    """The top-level packages in `src` (folders with an __init__.py), leaving out tests."""
+    return sorted(p.parent.name for p in src.glob("*/__init__.py") if p.parent.name != "tests")
+
+
 def _guess_package(src: Path) -> str:
-    found = sorted(p.parent.name for p in src.glob("*/__init__.py") if p.parent.name != "tests")
+    found = find_packages(src)
     if len(found) == 1:
         return found[0]
     # With several candidates, picking one would quietly leave the others unchecked.

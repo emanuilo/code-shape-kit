@@ -1,8 +1,11 @@
 # Architecture contracts for import-linter. Paste into pyproject.toml, then replace
-# the names with your own. Each contract is one decision from DESIGNING_THE_SHAPE.md,
-# written down so a tool can guard it. Delete the contracts you don't need.
+# the names with your own (or run `code-shape init`, which drafts the layers contract
+# from your imports).
+
+# Each contract is one decision from DESIGNING_THE_SHAPE.md, written down so a tool can
+# guard it. Delete the contracts you don't need.
 #
-# Every name below is a PLACEHOLDER, shown for a small web shop:
+# The names in the examples are PLACEHOLDERS, shown for a small web shop:
 #   myapp                -> your top-level package
 #   cli, api             -> your entry points (what starts the program: a CLI, web routes, a worker)
 #   orders, inventory    -> your features (one package per concept)

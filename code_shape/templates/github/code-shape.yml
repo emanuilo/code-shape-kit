@@ -1,10 +1,11 @@
-# Copy to .github/workflows/code-shape.yml.
+# Copy to .github/workflows/code-shape.yml (`code-shape init` does it for you).
+
 # - On every PR: ENFORCE mode. Fails only on NEW or WORSE violations (the baseline
 #   holds the old ones), and when an improvement isn't locked into the baseline.
 #   It also lists every rule the PR loosens (baseline entries added, limits raised,
 #   gates or contracts removed, allowances widened, suppression comments added...)
 #   at the top of the run's summary page. That list is a warning, not a failure:
-#   a human reviews it. templates/CODEOWNERS makes that review required.
+#   a human reviews it. The kit's CODEOWNERS template makes that review required.
 # - Weekly and on demand: REPORT mode with git-history trends, uploaded as an artifact.
 name: Code shape
 
@@ -30,7 +31,7 @@ jobs:
       # The project must be installed too: mypy and deptry need its dependencies.
       # KIT: a path if you vendored the kit (e.g. tools/code-shape-kit). To install from
       # GitHub instead, replace the pip line with:
-      #   pip install -e . "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.2.2"
+      #   pip install -e . "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.3.0"
       - name: Install project and code-shape-kit
         env:
           KIT: tools/code-shape-kit

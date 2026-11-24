@@ -16,7 +16,7 @@ CONTRACT_SUMMARY = re.compile(r"^Contracts: (\d+) kept, (\d+) broken\.$", re.MUL
 
 def import_linter(settings: Settings, tmp: Path) -> GroupResult:
     if not settings.contracts:
-        return GroupResult("import-linter", skipped="no import-linter contracts (see templates/importlinter.toml)")
+        return GroupResult("import-linter", skipped="no import-linter contracts (`code-shape init` drafts them)")
     output = run(settings, tmp, ["lint-imports", str(settings.contracts), "--no-cache", "--no-logo"])
     kept, broken = _contract_verdicts(output)
     report = output.split("Broken contracts", 1)[-1]

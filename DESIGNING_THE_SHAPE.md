@@ -129,7 +129,7 @@ breaks the rule, so say what to do instead.
 Changing a rule later is a decision too, and the easiest way for an agent to get a red
 check green. In CI, `code-shape check --base origin/main` lists every rule a pull request
 loosens (a limit raised, a gate or contract removed, an allowance widened, a baseline entry
-or a suppression comment added), and `templates/CODEOWNERS` makes the files that hold the
+or a suppression comment added), and `code_shape/templates/CODEOWNERS` makes the files that hold the
 rules need a human's review. When you approve such a change, you are changing the shape:
 check that it is still the one you decided on.
 

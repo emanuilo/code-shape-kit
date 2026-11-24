@@ -461,6 +461,15 @@ def test_a_file_the_tool_cannot_parse_fails_the_check(project: Path, group: str)
     assert code == 1 and "could not run" in out and "config.py" in out, out
 
 
+def test_the_src_layout_package_is_not_a_dependency(project: Path) -> None:
+    (project / "src").mkdir()
+    (project / "tidy_app").rename(project / "src/tidy_app")
+    config = project / "pyproject.toml"
+    config.write_text(config.read_text().replace('"tidy_app/', '"src/tidy_app/'))
+    code, out = shape(project, "check", "--only", "deptry")
+    assert code == 0 and "DEP003" not in out, out
+
+
 def test_excluded_files_are_left_out_of_every_check(project: Path) -> None:
     generated = project / "tidy_app" / "inventory" / "generated_tables.py"
     generated.write_text(COMPLEX + "\n\ndef never_called() -> int:\n    return 1\n")

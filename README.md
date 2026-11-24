@@ -103,7 +103,7 @@ the trend extracts old commits with a safety filter added in 3.11.4).
 pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit"
 
 # in CI, pin a tag (or a commit sha) so the gates only change when you bump it
-pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.2.2"
+pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.3.0"
 ```
 
 `pip install git+https://github.com/emanuilo/code-shape-kit` alone installs only the
@@ -117,6 +117,8 @@ installed a newer linter. The project itself must be installed in the same envir
 ## The commands
 
 ```bash
+code-shape init                # set the kit up here: best guesses for you to review
+code-shape init --dry-run      # ...only show what it would write
 code-shape report              # run everything, write code-shape-report.md, never fail
 code-shape report --trend 8    # ...plus the same numbers for 8 past commits
 code-shape check               # CI gate: fail on NEW or WORSE violations
@@ -127,8 +129,36 @@ code-shape check --base origin/main   # ...and warn about every rule loosened si
 
 Options: `--root DIR` (project folder), `--config FILE` (a TOML with `[tool.shape]`, if not
 in pyproject.toml), `--baseline FILE`, `--out FILE`, `--only sizes,ruff,...` (run some
-check groups), `--base REF` and `--summary FILE` (see below). `templates/code-shape.mk` has the same as `make shape-report`,
-`make shape-check`, `make shape-baseline`, `make shape-tighten`.
+check groups), `--base REF` and `--summary FILE` (see below). `code_shape/templates/code-shape.mk` has the same as
+`make shape-report`, `make shape-check`, `make shape-baseline`, `make shape-tighten`.
+
+**What `init` writes.** It never prompts and never overwrites: a section or file that is
+already there is left alone, and the summary says so.
+
+- `[tool.shape]` and `[tool.importlinter]`, appended to `pyproject.toml` as text (your own
+  comments and formatting stay). They are the kit's templates with the guesses filled in:
+  the package (and the `src/` layout), the `config_modules` (only the obvious settings
+  module: one named `config.py`, `settings.py`, `conf.py` or `env.py`, else the one with
+  clearly the most `os.environ` / `os.getenv` reads; with none obvious, a commented
+  example), and a layers contract drafted from today's imports
+  between the modules directly inside the package. A module that imports another sits above
+  it; modules that don't import each other share a layer (`orders | inventory`). Imports in
+  a cycle can't be layered: init picks an order and lists the imports that go against it
+  under `ignore_imports`, so you can see them and fix them. With no code yet, the contract
+  is the template's example, each name optional until the module exists.
+- `.github/workflows/code-shape.yml` (installs this version of the kit from GitHub, on the
+  lowest Python your `requires-python` allows, 3.11 or newer; 3.12 without one) and
+  `.github/CODEOWNERS` (replace `@your-org/architects` with your reviewers).
+
+Other modules that read the environment are not listed: `code-shape check` flags them
+(`banned-api`), and the summary names them. Move each read into the settings module, or
+baseline it on purpose. Without a package yet, init writes a placeholder name (your
+`[project]` name) into `packages`; `code-shape check` stops with an error naming the missing
+folder until you create the package.
+
+When `[tool.shape]` is already there, the contract is drafted for the `src` and `packages`
+it names. Without a `pyproject.toml` it stops: create one for your project first. The
+guesses are a draft. The layer order shows what the code does today, not what it should do: review it.
 
 **How the baseline works.** `.code-shape-baseline.json` lists known problems by place
 (file + function name, no line numbers, so unrelated edits don't disturb it) and by size
@@ -159,7 +189,7 @@ flags) but drops the settings that take code out of the check, also in
 `follow_imports_for_stubs`, `check_untyped_defs`, `warn_unused_ignores` and `exclude`
 (use `[tool.shape] exclude` for generated code). A `mypy.ini` or `setup.cfg` is not read.
 Architecture contracts are never baselined by the kit: use import-linter's own
-`ignore_imports` list for existing violations (see `templates/importlinter.toml`).
+`ignore_imports` list for existing violations (see `code_shape/templates/importlinter.toml`).
 
 **Rules loosened (`--base REF`).** The baseline and the config are files in the repo, so an
 agent can edit them to get a check green. `code-shape check --base origin/main` (also
@@ -182,7 +212,7 @@ It is a warning: it never changes the exit code, because some of these changes a
 (a human decided). If the ref is missing or the folder isn't a git repository, it says so
 and the check goes on. `--summary FILE` appends the list as markdown to FILE; the CI
 template passes `$GITHUB_STEP_SUMMARY`, so it shows at the top of the run's summary page.
-To make the human approval required, copy `templates/CODEOWNERS` to `.github/CODEOWNERS`:
+To make the human approval required, copy `code_shape/templates/CODEOWNERS` to `.github/CODEOWNERS` (`init` does it):
 it puts the config, the baseline, the whitelist and the contracts under code-owner review.
 Contracts in a separate `.importlinter` (INI) file are not compared; CODEOWNERS covers them.
 
@@ -220,6 +250,14 @@ changes for a project that doesn't use it. For a catch-all that is in the baseli
 and is a deliberate boundary, list the function (with its reason), then run
 `code-shape tighten` (its baseline entry now shows as IMPROVED) and commit both.
 
+**Upgrading to 0.3.0.** New command `code-shape init` (see above). The templates moved to
+`code_shape/templates/` (they ship with the package, for `code-shape init`): a Makefile
+that includes `tools/code-shape-kit/templates/code-shape.mk` needs the new path. With the
+`src/` layout, deptry used to report the project's own package as an undeclared dependency
+(`DEP003`); baselined entries for it now show as IMPROVED: run `code-shape tighten`.
+A `packages` entry with no folder on disk is now a config error that names the folder
+(it used to fail inside the tools).
+
 **New gates in 0.2.0.** New gates arrive with an upgrade: suppression
 comments (`inline-suppression`), swallowed errors, bare suppressions, commented-out code,
 `print()` outside the entry point, mutable defaults, wildcard imports, risky code
@@ -233,27 +271,32 @@ entries for the new checks and `type-errors`), and commit it. If a module other 
 ## New project
 
 1. Read `DESIGNING_THE_SHAPE.md`. Write down your concepts and layers before the code exists.
-2. Paste `templates/shape.toml` and `templates/importlinter.toml` into `pyproject.toml`.
-   Fill in your package name, layers, adapters (`banned_api`) and concepts.
-3. Copy `templates/github/code-shape.yml` to `.github/workflows/`, and `templates/CODEOWNERS`
-   to `.github/CODEOWNERS` (then require code-owner review in the branch protection rules).
-4. No baseline needed: every violation fails from day one, so the shape never decays.
-5. Tell your agents (CLAUDE.md / AGENTS.md): "Run `code-shape check` before you finish.
+2. Run `code-shape init`. It writes the config, the CI workflow and CODEOWNERS. Replace the
+   example layers with yours, and add your adapters (`banned_api`) and concepts. Then
+   require code-owner review in the branch protection rules.
+   (By hand instead: paste `code_shape/templates/shape.toml` and `importlinter.toml` into
+   `pyproject.toml` and fill in the placeholders; copy `github/code-shape.yml` to
+   `.github/workflows/` and `CODEOWNERS` to `.github/`.)
+3. Run `code-shape check`. No baseline needed: every violation fails from day one, so the
+   shape never decays.
+4. Tell your agents (CLAUDE.md / AGENTS.md): "Run `code-shape check` before you finish.
    Fix what it reports; never add to the baseline, add a suppression comment or weaken a
    limit without asking."
 
 ## Existing project
 
-1. Run `code-shape report --trend 8`. Read the summary, the worst offenders and the
+1. Run `code-shape init`. It writes the config with a layers contract drafted from today's
+   imports, the CI workflow and CODEOWNERS (by hand instead: see "New project", step 2).
+2. Run `code-shape report --trend 8`. Read the summary, the worst offenders and the
    concept table.
-2. Decide the target shape (`DESIGNING_THE_SHAPE.md`) and write the import-linter contracts.
+3. Decide the target shape (`DESIGNING_THE_SHAPE.md`) and fix the drafted contracts to match.
    For imports that break them today, list them under `ignore_imports`.
-3. Adjust limits only where the default is wrong for the project, not to make today's code pass.
+4. Adjust limits only where the default is wrong for the project, not to make today's code pass.
    The baseline is for that.
-4. Run `code-shape baseline`, commit `.code-shape-baseline.json`, add the CI workflow and
-   CODEOWNERS. From now on a change that makes things worse fails, unless a human approves
-   it (it then shows up in the rules-loosened warning).
-5. Pay debt down hotspot by hotspot (the report lists them). After each fix, `code-shape tighten`.
+5. Run `code-shape baseline` and commit `.code-shape-baseline.json` with the rest. From now on
+   a change that makes things worse fails, unless a human approves it (it then shows up in
+   the rules-loosened warning).
+6. Pay debt down hotspot by hotspot (the report lists them). After each fix, `code-shape tighten`.
 
 ## When a check fails (for agents)
 
@@ -327,7 +370,7 @@ reports the failure to the user. List those, one function each, with the reason:
 
 This is for intentional boundaries (loops that must keep running, errors shown to the
 user), not for debt: existing catch-alls you mean to fix go in the baseline. The setting
-lives in pyproject.toml, which `templates/CODEOWNERS` puts under code-owner review, so a
+lives in pyproject.toml, which `code_shape/templates/CODEOWNERS` puts under code-owner review, so a
 human approves every entry. Agents: don't add one; fix the code or ask.
 
 ## Deliberately left out
@@ -356,7 +399,7 @@ code-shape-kit/
   pyproject.toml             the kit as a package; pinned tool versions; its own shape rules
   code_shape/
     catalog.toml             every check in plain language (title, why, fix) - data, not code
-    cli.py                   the `code-shape` command: report | check | baseline | tighten
+    cli.py                   the `code-shape` command: report | check | baseline | tighten | init
     loosening.py             --base REF: lists the rules loosened since a git ref (a warning)
     settings.py              reads [tool.shape]; default limits
     model.py                 Finding / GroupResult data
@@ -364,6 +407,7 @@ code-shape-kit/
     baseline.py              baseline + ratchet
     report.py                markdown report
     trend.py                 re-runs fast checks on past commits (git archive, read-only)
+    init/                    `code-shape init`: guesses (package, config modules, layers), fills the templates
     checks/
       linters/               runs the established tools, one module per tool family:
         running.py           runs a tool from a scratch folder; shared output helpers
@@ -377,15 +421,16 @@ code-shape-kit/
       concepts.py            where each named concept lives
       tests_mirror.py        tests mirror the source tree
       suppressions.py        counts the comments that silence a tool
-  templates/
-    shape.toml               [tool.shape] with every default limit and why
-    importlinter.toml        contract templates: layers, independence, interfaces, adapters, cycles
-    github/code-shape.yml    CI: gate on PRs (with the rules-loosened warning), weekly report with trends
-    CODEOWNERS               human review for the config, baseline, whitelist and contracts
-    code-shape.mk            make targets for projects
+    templates/               shipped with the package; `init` fills them in
+      shape.toml             [tool.shape] with every default limit and why
+      importlinter.toml      contract templates: layers, independence, interfaces, adapters, cycles
+      github/code-shape.yml  CI: gate on PRs (with the rules-loosened warning), weekly report with trends
+      CODEOWNERS             human review for the config, baseline, whitelist and contracts
+      code-shape.mk          make targets for projects
   examples/tidy_app/         a tiny, well-shaped stock-count CLI; the tests break it on purpose
   tests/test_gates.py        proof that each gate fails with a clear message, and the ratchet holds
   tests/test_loosening.py    the rules-loosened warning against a git ref
+  tests/test_init.py         `code-shape init`: guesses, never overwriting, dry run
   tests/test_*.py            baseline rules, config validation, reading tool output, suppressions
   .github/workflows/ci.yml   the kit's own CI: tests + `code-shape check` on itself
 ```
@@ -393,7 +438,7 @@ code-shape-kit/
 ## Proof the gates work
 
 ```bash
-make install && make test      # 143 tests: inject a violation, expect a clear failure, revert; ratchet; baseline rules; rules-loosened warning
+make install && make test      # 156 tests: inject a violation, expect a clear failure, revert; ratchet; baseline rules; rules-loosened warning
 make self-check                # the kit passes its own gates with an empty baseline
 ```
 

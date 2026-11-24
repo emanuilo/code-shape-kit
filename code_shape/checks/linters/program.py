@@ -73,6 +73,11 @@ def deptry(settings: Settings, tmp: Path) -> GroupResult:
     cmd = ["deptry", ".", "--json-output", str(out), "--no-ansi"]
     if settings.pyproject:
         cmd += ["--config", str(settings.pyproject)]
+    # deptry finds the project's own packages only directly in ".", so with the src/ layout it
+    # took them for undeclared dependencies. The flag replaces [tool.deptry] known_first_party,
+    # so that list is passed on too.
+    for name in dict.fromkeys([*_known_first_party(settings), *(p.split(".")[0] for p in settings.packages)]):
+        cmd += ["--known-first-party", name]
     run(settings, tmp, cmd, cwd=settings.root)  # deptry's excludes are relative to the cwd; it writes nothing
     found: dict[str, Finding] = {}
     with reading("deptry"):
@@ -84,6 +89,13 @@ def deptry(settings: Settings, tmp: Path) -> GroupResult:
             )
             found.setdefault(finding.key, finding)  # one finding per file and package
     return GroupResult("deptry", list(found.values()))
+
+
+def _known_first_party(settings: Settings) -> list[str]:
+    if not settings.pyproject:
+        return []
+    deptry_config = tomllib.loads(settings.pyproject.read_text()).get("tool", {}).get("deptry", {})
+    return list(deptry_config.get("known_first_party", []))
 
 
 def mypy(settings: Settings, tmp: Path) -> GroupResult:

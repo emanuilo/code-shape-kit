@@ -1,10 +1,12 @@
-# Paste into your project's pyproject.toml. `myapp` and every module name below are
-# placeholders: replace them with your own. What to fill in:
+# Paste into your project's pyproject.toml (or run `code-shape init`, which fills in
+# best guesses). `myapp` and every module name below are placeholders: replace them.
+
+# What to fill in:
 #   packages, config_modules           - always
 #   banned_api, concepts               - recommended (examples are commented out)
 #   limits                             - only where a default is wrong for your project
 # Every limit shown is the kit's default, so you can delete any line you don't change.
-# Why each number:
+# Why each number: see the comment after it.
 
 [tool.shape]
 packages = ["myapp"]            # your top-level package(s)

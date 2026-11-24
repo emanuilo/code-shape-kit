@@ -112,3 +112,19 @@ def test_error_boundaries_are_read(tmp_path: Path) -> None:
     root = project(tmp_path, '[tool.shape.error_boundaries]\n"app/sync.py:Sync.loop.inner" = " offline often "\n')
     (root / "app" / "sync.py").write_text("")
     assert load(root).tools.error_boundaries == {"app/sync.py:Sync.loop.inner": "offline often"}
+
+
+def test_a_package_that_does_not_exist_is_one_clear_error(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[tool.shape]\npackages = ["shop", "app.sub"]\n')
+    (tmp_path / "app").mkdir()
+    with pytest.raises(SystemExit) as error:
+        load(tmp_path)
+    message = str(error.value)
+    assert "package `shop`: folder `shop` does not exist (packages are looked for in the project root" in message
+    assert "package `app.sub`: folder `app/sub` does not exist" in message
+    (tmp_path / "src" / "shop").mkdir(parents=True)  # the src/ layout: found there, not at the root
+    (tmp_path / "pyproject.toml").write_text('[tool.shape]\npackages = ["shop", "lib"]\n')
+    with pytest.raises(
+        SystemExit, match=re.escape("package `lib`: folder `src/lib` does not exist (packages are looked for in `src/`")
+    ):
+        load(tmp_path)
