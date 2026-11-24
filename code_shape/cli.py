@@ -18,6 +18,7 @@ from pathlib import Path
 from code_shape import baseline as bl
 from code_shape import loosening, report
 from code_shape.checks import ALL_GROUPS, run_all
+from code_shape.checks.linters import BOUNDARIES
 from code_shape.model import CATALOG, Finding, GroupResult, Table, title
 from code_shape.settings import Settings, load
 from code_shape.trend import trend
@@ -77,6 +78,7 @@ def _gate(args: argparse.Namespace, settings: Settings, results: list[GroupResul
     if crashed:  # a gate that could not run must not pass silently
         print("code-shape: these checks could not run:\n  " + "\n  ".join(f"{r.name}: {r.error}" for r in crashed))
     if args.mode == "check":
+        _boundaries(results)
         failed = bool(crashed) or _check(results, settings.gate.checks, bl.load(path))
         if failed:
             print("\n" + FOOTER)
@@ -121,6 +123,14 @@ def _check(results: list[GroupResult], gates: list[str], baseline: bl.Entries) -
         f"{len(comparison.improved)} improved-but-not-locked-in."
     )
     return failed
+
+
+def _boundaries(results: list[GroupResult]) -> None:
+    """The catch-alls accepted by [tool.shape] error_boundaries, so a reviewer sees them in the CI log."""
+    rows = [row for r in results for t in r.tables if t.title == BOUNDARIES for row in t.rows]
+    if rows:
+        print("Accepted error boundaries ([tool.shape] error_boundaries, reviewed by a human):")
+        print("".join(f"  - {at}: {count} accepted - {reason}\n" for at, reason, count in rows), end="")
 
 
 def _explain(label: str, finding: Finding) -> None:

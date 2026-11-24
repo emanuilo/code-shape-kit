@@ -136,6 +136,11 @@ def _settings(old: Settings, new: Settings) -> list[str]:
         old.tools.logger_objects,
         new.tools.logger_objects,
     )
+    found += _added(
+        "[tool.shape] error_boundaries (their catch-alls pass swallowed-errors)",
+        list(old.tools.error_boundaries),
+        list(new.tools.error_boundaries),
+    )
     for tool, args in sorted(new.tools.extra_args.items()):
         found += _added(f"[tool.shape.extra_args] {tool}", old.tools.extra_args.get(tool, []), args)
     widened: dict[str, list[str]] = {}  # pattern -> the restricted APIs it may now use

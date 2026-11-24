@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -85,3 +86,29 @@ def test_logger_objects_are_added_to_loguru(tmp_path: Path) -> None:
     assert load(project(tmp_path / "plain", "")).tools.logger_objects == ["loguru.logger"]
     settings = load(project(tmp_path / "own", 'logger_objects = "app.log.logger"\n'))
     assert settings.tools.logger_objects == ["loguru.logger", "app.log.logger"]
+
+
+@pytest.mark.parametrize(
+    ("shape", "message"),
+    [
+        ('[tool.shape.error_boundaries]\n"app/sync.py:loop" = ""\n', "`app/sync.py:loop` needs a reason"),
+        ('[tool.shape.error_boundaries]\n"app/sync.py:loop" = "  "\n', "`app/sync.py:loop` needs a reason"),
+        ('[tool.shape.error_boundaries]\n"app/sync.py:loop" = 3\n', "`app/sync.py:loop` needs a reason"),
+        ('[tool.shape.error_boundaries]\n"app/sync.py" = "the whole file"\n', "must name one function"),
+        ('[tool.shape.error_boundaries]\n"app/sync.py:" = "x"\n', "must name one function"),
+        ('[tool.shape.error_boundaries]\n"app/sync.py:Sync.loop()" = "x"\n', "must name one function"),
+        ('[tool.shape.error_boundaries]\n"app/gone.py:loop" = "x"\n', "file `app/gone.py` does not exist"),
+        ('error_boundaries = ["app/sync.py:loop"]\n', "`error_boundaries` must be a table"),
+    ],
+)
+def test_bad_error_boundaries_are_an_error(tmp_path: Path, shape: str, message: str) -> None:
+    root = project(tmp_path, shape)
+    (root / "app" / "sync.py").write_text("")
+    with pytest.raises(SystemExit, match=re.escape(message)):
+        load(root)
+
+
+def test_error_boundaries_are_read(tmp_path: Path) -> None:
+    root = project(tmp_path, '[tool.shape.error_boundaries]\n"app/sync.py:Sync.loop.inner" = " offline often "\n')
+    (root / "app" / "sync.py").write_text("")
+    assert load(root).tools.error_boundaries == {"app/sync.py:Sync.loop.inner": "offline often"}

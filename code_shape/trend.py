@@ -52,7 +52,9 @@ def _run_at(settings: Settings, git: list[str], top: Path, paths: list[str], sha
         with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
             tar.extractall(tmp, filter="data")
         root = Path(tmp) / settings.root.relative_to(top)
-        old = dataclasses.replace(settings, root=root, src=root / settings.src.relative_to(settings.root))
+        # Today's error boundaries may name functions the old code doesn't have; the trend doesn't count them.
+        tools = dataclasses.replace(settings.tools, error_boundaries={})
+        old = dataclasses.replace(settings, root=root, src=root / settings.src.relative_to(settings.root), tools=tools)
         return run_all(old, FAST_GROUPS)
 
 

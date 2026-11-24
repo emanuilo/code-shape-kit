@@ -86,6 +86,17 @@ history_days = 365
 # "users" = ["User\\b", "account"]
 # "export" = ["export", "to_csv"]
 
+# Deliberate error boundaries: functions that may catch every error without logging the
+# traceback, e.g. a background loop that must keep running (offline every minute) or a
+# fallback whose failure is shown to the user. Key: "path/to/module.py:function" or
+# "...:Class.method" (one function, nested ones as "outer.inner"; never a whole file or class),
+# relative to the project root. Value: why, for the reviewer (required). Only that function's
+# catch-alls (bare except, `except Exception`, except-pass/continue) are accepted; every other
+# finding in it still counts. Not for debt: that goes in the baseline. An entry whose function is
+# gone or no longer catches everything is an error, and adding one is a "rule loosened".
+[tool.shape.error_boundaries]
+# "myapp/sync.py:Syncer._loop" = "Runs every minute while offline; a traceback each time is noise."
+
 # Extra command-line arguments per tool, for project-specific needs.
 [tool.shape.extra_args]
 # vulture = ["--ignore-decorators", "@app.route,@cli.command"]

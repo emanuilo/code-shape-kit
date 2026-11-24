@@ -8,9 +8,9 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from code_shape.checks.linters.running import RATIO, ToolError, merge, pkg_dirs, reading, run
-from code_shape.model import Finding, GroupResult
-from code_shape.settings import Settings
-from code_shape.source import symbol_at
+from code_shape.model import Finding, GroupResult, Table
+from code_shape.settings import ConfigError, Settings
+from code_shape.source import definitions, excluded, symbol_at
 
 
 def _toml_str(text: str) -> str:
@@ -44,6 +44,12 @@ RUFF_RULES |= {code: ("boolean-flag-args", None, None) for code in ("FBT001", "F
 # global, a private member); the others by the ruff code.
 NAMED = ("banned-api", "global-state", "private-access")
 COUNTED = {check for check, limit, _ in RUFF_RULES.values() if limit is None}
+# The swallowed-errors rules that mean "catches every error": a bare except, `except Exception`,
+# and such an except that only passes or continues (S110/S112 only fire for those). In a function
+# listed in [tool.shape] error_boundaries they are accepted. TRY203 (an except that only re-raises)
+# is not one: it catches nothing for good, it is a useless clause, so it still counts there.
+CATCH_ALL = ("E722", "BLE001", "S110", "S112")
+BOUNDARIES = "Error boundaries (reviewed catch-alls)"
 
 
 def ruff(settings: Settings, tmp: Path) -> GroupResult:
@@ -73,8 +79,57 @@ def ruff(settings: Settings, tmp: Path) -> GroupResult:
     with reading("ruff"):
         found = [_ruff_finding(settings, item) for item in json.loads(output or "[]")]
     findings = [f for f in found if f]
+    findings, boundaries = _error_boundaries(settings, findings)
     plain = [f for f in findings if f.check not in COUNTED]
-    return GroupResult("ruff", plain + merge([f for f in findings if f.check in COUNTED]))
+    return GroupResult("ruff", plain + merge([f for f in findings if f.check in COUNTED]), tables=boundaries)
+
+
+def _error_boundaries(settings: Settings, findings: list[Finding]) -> tuple[list[Finding], list[Table]]:
+    """Drop the catch-alls of the functions listed in [tool.shape] error_boundaries; list what was accepted.
+
+    An entry that names no function, or whose function no longer catches everything, is a config
+    error: a stale exception must not stay in the config, ready to accept the next catch-all.
+    """
+    listed = settings.tools.error_boundaries
+    if not listed:
+        return findings, []
+    accepted = dict.fromkeys(listed, 0)
+    kept = []
+    for f in findings:
+        code, _, where = f.symbol.partition(" in ")
+        at = f"{f.path}:{where}"
+        if f.check == "swallowed-errors" and code in CATCH_ALL and at in accepted:
+            accepted[at] += 1
+        else:
+            kept.append(f)
+    problems = [problem for at, count in accepted.items() if (problem := _boundary_problem(settings, at, count))]
+    if problems:
+        raise ConfigError("code-shape: bad [tool.shape] config: " + "; ".join(problems))
+    rows = [[at, listed[at], count] for at, count in sorted(accepted.items())]
+    note = (
+        "Functions allowed to catch every error ([tool.shape] error_boundaries), with the reason a human "
+        "approved. Every other finding in them still counts."
+    )
+    return kept, [Table(BOUNDARIES, ["function", "reason", "catch-alls accepted"], rows, note)]
+
+
+def _boundary_problem(settings: Settings, at: str, accepted: int) -> str:
+    file, _, name = at.partition(":")
+    path = settings.root / file
+    checked = any(path.resolve().is_relative_to(pkg.resolve()) for pkg in settings.package_dirs())
+    if not checked or excluded(settings, path):
+        return f"error_boundaries `{at}`: `{file}` is not in the checked packages (or it is excluded)"
+    found = [d for d in definitions(path) if d.name == name]
+    if not found:
+        return f"error_boundaries `{at}`: no function `{name}` in `{file}`"
+    if all(d.is_class for d in found):
+        return f"error_boundaries `{at}`: `{name}` is a class; list the function or method that catches"
+    if not accepted:
+        return (
+            f"error_boundaries `{at}`: the function no longer catches every error (no bare `except:` or "
+            "`except Exception` left in it); remove the entry"
+        )
+    return ""
 
 
 def _ruff_finding(settings: Settings, item: dict) -> Finding | None:

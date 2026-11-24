@@ -228,3 +228,16 @@ def test_a_new_logger_object_is_listed(tmp_path: Path) -> None:
         "[tool.shape] logger_objects (their logger.exception passes swallowed-errors): added `app.log.logger`"
     ]
     assert _settings(after, before) == []  # dropping one is stricter
+
+
+def test_a_new_error_boundary_is_listed(tmp_path: Path) -> None:
+    config = tmp_path / "pyproject.toml"
+    head = '[tool.shape]\npackages = ["app"]\n[tool.shape.error_boundaries]\n"app/a.py:loop" = "offline"\n'
+    before = parse(tmp_path, config, head)
+    after = parse(tmp_path, config, head + '"app/b.py:Probe.run" = "shown to the user"\n')
+    assert _settings(before, after) == [
+        "[tool.shape] error_boundaries (their catch-alls pass swallowed-errors): added `app/b.py:Probe.run`"
+    ]
+    assert _settings(after, before) == []  # dropping one is stricter
+    reworded = parse(tmp_path, config, head.replace('"offline"', '"offline every minute"'))
+    assert _settings(before, reworded) == []  # a new reason for the same function allows nothing more

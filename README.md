@@ -71,7 +71,7 @@ Gate = fails `code-shape check`. Tracked = report only.
 | | Type errors, also in functions without annotations; `# type: ignore` without an error code, or no longer needed | interfaces between modules drifting apart | mypy | gate |
 | Silenced checks | Suppression comments (`# noqa`, `# type: ignore`, `# pylint: disable`, `# pragma: no cover`, `# complexipy: ignore`, `# nosec`), counted per function and kind | problems hidden instead of fixed, and the habit copied | custom (tokenize) | gate |
 | | Suppression without an error code (bare `# noqa`, `# type: ignore`) | every rule silenced on the line, also future ones | ruff PGH003, PGH004 | gate |
-| Risky habits | Errors swallowed or caught too broadly (bare `except:`, `except Exception`, except that only passes, continues or re-raises; `except Exception` that logs with `logger.exception(...)` passes, for `logging`, loguru and `logger_objects`) | failures hidden; bugs show up far from their cause | ruff E722, BLE001, S110, S112, TRY203 | gate |
+| Risky habits | Errors swallowed or caught too broadly (bare `except:`, `except Exception`, except that only passes, continues or re-raises; `except Exception` that logs with `logger.exception(...)` passes, for `logging`, loguru and `logger_objects`; reviewed exceptions per function in `error_boundaries`) | failures hidden; bugs show up far from their cause | ruff E722, BLE001, S110, S112, TRY203 | gate |
 | | Commented-out code | stale code that gets copied back in | ruff ERA001 | gate |
 | | `print()` outside the entry point (`cli.py`, `__main__.py`, or `output_modules`) | leftover debugging; output mixed into library code | ruff T201, T203 | gate |
 | | Mutable or computed default argument | one call changing what the next one gets | ruff B006, B008 | gate |
@@ -103,7 +103,7 @@ the trend extracts old commits with a safety filter added in 3.11.4).
 pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit"
 
 # in CI, pin a tag (or a commit sha) so the gates only change when you bump it
-pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.2.1"
+pip install "code-shape-kit[tools] @ git+https://github.com/emanuilo/code-shape-kit@v0.2.2"
 ```
 
 `pip install git+https://github.com/emanuilo/code-shape-kit` alone installs only the
@@ -169,7 +169,7 @@ origin/main - needs human approval", every change that makes the gates easier to
 - baseline entries added, or their numbers raised;
 - limits raised, gates removed, `skip` or `exclude` grown, `packages` shrunk, `extra_args` added;
 - `config_modules`, `output_modules` or a `banned_api` `allowed` list widened, a banned API dropped,
-  or a logger added to `logger_objects`;
+  a logger added to `logger_objects`, or a function added to `error_boundaries`;
 - the dead-code whitelist grown (the setting or the file), `[tool.vulture]` ignores or
   excludes added, `[tool.deptry]` ignores, excludes or `known_first_party` added;
 - `[tool.mypy]` `ignore_missing_imports` switched on or given more modules, or `strict` switched off;
@@ -213,6 +213,12 @@ the traceback with `logger.exception(...)` (or `exc_info=True`) passes, while
 `[tool.shape] logger_objects = ["myapp.log.logger"]` (added to loguru's; adding one is
 listed by `--base` as a rule loosened). Baselined `swallowed-errors` entries that this
 fixes show up as IMPROVED: run `code-shape baseline --only ruff` and commit it.
+
+**Upgrading to 0.2.2.** New setting `[tool.shape.error_boundaries]` (see "Error
+boundaries" below): a reviewed list of functions that may catch every error. Nothing
+changes for a project that doesn't use it. For a catch-all that is in the baseline today
+and is a deliberate boundary, list the function (with its reason), then run
+`code-shape tighten` (its baseline entry now shows as IMPROVED) and commit both.
 
 **New gates in 0.2.0.** New gates arrive with an upgrade: suppression
 comments (`inline-suppression`), swallowed errors, bare suppressions, commented-out code,
@@ -287,6 +293,43 @@ the rules-loosened warning. Agents: first check whether something uses the code 
 runtime (a router, a decorator, `getattr` or a registry, an entry point). If nothing does,
 delete it; if something does, ask a human before adding it to the whitelist.
 
+## Error boundaries
+
+`swallowed-errors` fails a bare `except:` or `except Exception` that doesn't keep the
+traceback. Almost always the fix is in the code: catch the specific errors you expect,
+re-raise, or log with `logger.exception(...)`. A few functions are deliberate boundaries
+where none of that is right: a background retry loop that is offline every minute (a
+traceback each time is noise), a markdown-to-plain-text fallback, a health probe that
+reports the failure to the user. List those, one function each, with the reason:
+
+```toml
+[tool.shape.error_boundaries]
+"myapp/sync.py:Syncer._loop" = "Runs every minute while offline; the status bar shows the error."
+"myapp/doctor.py:check_api" = "A health probe: the failure is the result, shown to the user."
+"myapp/bot.py:send.fallback" = "Nested function: plain text if markdown fails; the error is shown."
+```
+
+- The key is `path:qualname`, the path relative to the project root (with the src/ layout,
+  `src/myapp/...`). It names one function or method; a nested one is `outer.inner`. A whole
+  file or class can't be listed, and a catch-all in a function nested inside a listed one
+  needs its own entry.
+- Only the catch-alls are accepted there: E722 (bare `except:`), BLE001 (`except Exception`
+  / `BaseException`), S110 and S112 (such an except that only passes or continues; ruff
+  reports these for catch-alls only). TRY203 (an except that only re-raises) still counts:
+  it isn't a boundary, just a useless clause. Every other finding in the function
+  (complexity, `print`, ...) and catch-alls in every other function still count.
+- The reason is required. A key that isn't `path.py:name`, a missing file, a function that
+  doesn't exist, a class, or a function that no longer catches everything (a stale entry)
+  is a config error: `code-shape` stops with a message naming the entry, so `check` fails.
+- `check` prints the accepted boundaries, and the report lists them (function, reason, how
+  many catch-alls each accepted) in their own section. `--base` lists every added entry as
+  a rule loosened.
+
+This is for intentional boundaries (loops that must keep running, errors shown to the
+user), not for debt: existing catch-alls you mean to fix go in the baseline. The setting
+lives in pyproject.toml, which `templates/CODEOWNERS` puts under code-owner review, so a
+human approves every entry. Agents: don't add one; fix the code or ask.
+
 ## Deliberately left out
 
 | Tool / idea | Why not |
@@ -350,7 +393,7 @@ code-shape-kit/
 ## Proof the gates work
 
 ```bash
-make install && make test      # 117 tests: inject a violation, expect a clear failure, revert; ratchet; baseline rules; rules-loosened warning
+make install && make test      # 143 tests: inject a violation, expect a clear failure, revert; ratchet; baseline rules; rules-loosened warning
 make self-check                # the kit passes its own gates with an empty baseline
 ```
 

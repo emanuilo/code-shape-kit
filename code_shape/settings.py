@@ -65,7 +65,10 @@ DEFAULT_LOGGER_OBJECTS = ["loguru.logger"]
 # Every key [tool.shape] may have.
 KNOWN_KEYS = {"packages", "src", "tests", "config_modules", "gates", "skip", "exclude", "baseline"}
 KNOWN_KEYS |= {"dead_code_whitelist", "limits", "banned_api", "concepts", "extra_args", "output_modules"}
-KNOWN_KEYS |= {"logger_objects"}
+KNOWN_KEYS |= {"logger_objects", "error_boundaries"}
+
+# [tool.shape.error_boundaries] keys: "path/to/module.py:Function" or "...:Class.method" (nested allowed).
+BOUNDARY = re.compile(r"^[^:]+\.py:[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$")
 
 # Checks that fail ENFORCE mode by default. Everything else is a tracked metric.
 DEFAULT_GATES = [
@@ -116,6 +119,8 @@ class ToolOptions:
     dead_code_whitelist: list[str] = field(default_factory=list)  # vulture whitelist files, relative to root
     output_modules: list[str] = field(default_factory=lambda: list(DEFAULT_OUTPUT_MODULES))  # may print
     logger_objects: list[str] = field(default_factory=lambda: list(DEFAULT_LOGGER_OBJECTS))  # e.g. "myapp.log.logger"
+    # "path.py:qualname" -> why that function may catch every error without the traceback
+    error_boundaries: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -184,6 +189,12 @@ def load(root: Path, config: Path | None = None) -> Settings:
         for name, spec in settings.concepts.items()
         if spec["home"] and not (root / spec["home"]).exists()
     ]
+    files = {at: at.partition(":")[0] for at in settings.tools.error_boundaries}
+    missing += [
+        f"error_boundaries `{at}`: file `{file}` does not exist (relative to the project root)"
+        for at, file in files.items()
+        if not (root / file).is_file()
+    ]
     if missing:
         raise ConfigError("code-shape: bad [tool.shape] config: " + "; ".join(missing))
     return settings
@@ -224,6 +235,7 @@ def parse(root: Path, config_file: Path, text: str) -> Settings:
             dead_code_whitelist=_as_list(shape.get("dead_code_whitelist", [])),
             output_modules=_as_list(shape.get("output_modules", DEFAULT_OUTPUT_MODULES)),
             logger_objects=list(dict.fromkeys(DEFAULT_LOGGER_OBJECTS + _as_list(shape.get("logger_objects", [])))),
+            error_boundaries={at: reason.strip() for at, reason in shape.get("error_boundaries", {}).items()},
         ),
     )
 
@@ -235,6 +247,7 @@ def _validate(shape: dict) -> None:
     problems += [f"unknown check `{check}` in gates" for check in shape.get("gates", []) if check not in CATALOG]
     if not _dotted_names(shape.get("logger_objects", [])):
         problems.append('`logger_objects` must list import paths of logger objects, e.g. "myapp.log.logger"')
+    problems += _boundary_problems(shape.get("error_boundaries", {}))
     for name, spec in shape.get("concepts", {}).items():
         for term in _concept(spec)["terms"]:
             try:
@@ -243,6 +256,21 @@ def _validate(shape: dict) -> None:
                 problems.append(f"concept `{name}`: `{term}` is not a valid regex ({exc})")
     if problems:
         raise ConfigError("code-shape: bad [tool.shape] config: " + "; ".join(problems))
+
+
+def _boundary_problems(boundaries: object) -> list[str]:
+    if not isinstance(boundaries, dict):
+        return ['`error_boundaries` must be a table: "path/to/module.py:function" = "why it may catch everything"']
+    problems = []
+    for at, reason in boundaries.items():
+        if not BOUNDARY.match(at):
+            problems.append(
+                f"error_boundaries `{at}` must name one function: `path/to/module.py:function` or "
+                "`path/to/module.py:Class.method` (not a whole file)"
+            )
+        if not isinstance(reason, str) or not reason.strip():
+            problems.append(f"error_boundaries `{at}` needs a reason: why this function may catch every error")
+    return problems
 
 
 def _concept(spec: str | list[str] | dict) -> dict:

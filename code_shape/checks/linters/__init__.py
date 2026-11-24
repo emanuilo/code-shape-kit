@@ -20,7 +20,7 @@ from __future__ import annotations
 from code_shape.checks.linters.contracts import import_linter
 from code_shape.checks.linters.program import deptry, mypy, vulture
 from code_shape.checks.linters.pylint_checks import pylint
-from code_shape.checks.linters.rules import complexipy, ruff
+from code_shape.checks.linters.rules import BOUNDARIES, complexipy, ruff
 from code_shape.checks.linters.running import ToolError
 
-__all__ = ["ToolError", "complexipy", "deptry", "import_linter", "mypy", "pylint", "ruff", "vulture"]
+__all__ = ["BOUNDARIES", "ToolError", "complexipy", "deptry", "import_linter", "mypy", "pylint", "ruff", "vulture"]

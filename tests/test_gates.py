@@ -245,6 +245,103 @@ def test_a_project_logger_passes_once_listed_in_logger_objects(project: Path) ->
     assert code == 0, out
 
 
+BOUNDARY = """
+
+class Syncer:
+    def loop(self) -> None:
+        while True:
+            try:
+                self.loop()
+            except Exception:
+                pass
+
+
+def send(text: str) -> None:
+    def fallback() -> None:
+        try:
+            send(text)
+        except Exception as e:
+            send(f"failed: {e}")
+
+    fallback()
+"""
+
+
+# The two functions in BOUNDARY, as error boundaries
+LISTED = {"Syncer.loop": "offline every minute", "send.fallback": "the error is shown"}
+
+
+def with_boundaries(project: Path, boundaries: dict[str, str]) -> None:
+    """Appends BOUNDARY to the service and lists `boundaries` (qualname -> reason) in [tool.shape]."""
+    service = project / "tidy_app" / "inventory" / "service.py"
+    service.write_text(service.read_text() + BOUNDARY)
+    lines = "".join(f'"tidy_app/inventory/service.py:{name}" = "{reason}"\n' for name, reason in boundaries.items())
+    pyproject = project / "pyproject.toml"
+    pyproject.write_text(pyproject.read_text() + "\n[tool.shape.error_boundaries]\n" + lines)
+
+
+def test_catch_alls_in_a_listed_error_boundary_pass(project: Path) -> None:
+    # Syncer.loop: except Exception + pass (BLE001 and S110); send.fallback: a nested function
+    with_boundaries(project, LISTED)
+    code, out = shape(project, "check", "--only", "ruff")
+    assert code == 0, out
+    assert "Accepted error boundaries" in out, out
+    assert "tidy_app/inventory/service.py:Syncer.loop: 2 accepted - offline every minute" in out, out
+    assert "tidy_app/inventory/service.py:send.fallback: 1 accepted - the error is shown" in out, out
+
+
+def test_catch_alls_outside_the_listed_function_still_fail(project: Path) -> None:
+    with_boundaries(project, {"Syncer.loop": LISTED["Syncer.loop"]})  # send.fallback is not listed
+    code, out = shape(project, "check", "--only", "ruff")
+    assert code == 1 and "[swallowed-errors]" in out and "BLE001 in send.fallback" in out, out
+    assert "Syncer.loop" not in out.split("Accepted error boundaries")[0], out
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("        print('debug')\n", "[print-call]"),  # another check in the same function
+        (
+            "        try:\n            self.loop()\n        except ValueError:\n            raise\n",
+            "TRY203 in Syncer.loop",
+        ),
+    ],
+)
+def test_other_findings_in_a_listed_function_still_fail(project: Path, text: str, expected: str) -> None:
+    with_boundaries(project, LISTED)
+    service = project / "tidy_app" / "inventory" / "service.py"
+    service.write_text(
+        service.read_text().replace("    def loop(self) -> None:\n", "    def loop(self) -> None:\n" + text)
+    )
+    code, out = shape(project, "check", "--only", "ruff")
+    assert code == 1 and expected in out, out
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        ("Syncer.gone", "no function `Syncer.gone` in `tidy_app/inventory/service.py`"),
+        ("Syncer", "`Syncer` is a class; list the function or method"),
+        ("send", "`tidy_app/inventory/service.py:send`: the function no longer catches every error"),
+    ],
+)
+def test_an_error_boundary_that_names_no_catching_function_is_an_error(project: Path, entry: str, message: str) -> None:
+    with_boundaries(project, {**LISTED, entry: "x"})
+    code, out = shape(project, "check", "--only", "ruff")
+    assert code == 1 and "bad [tool.shape] config" in out and message in out, out
+
+
+def test_report_lists_the_error_boundaries(project: Path) -> None:
+    with_boundaries(project, LISTED)
+    out_file = project / "report.md"
+    code, out = shape(project, "report", "--only", "ruff", "--out", str(out_file))
+    assert code == 0, out
+    text = out_file.read_text()
+    assert "## Error boundaries (reviewed catch-alls)" in text, text
+    assert "| tidy_app/inventory/service.py:Syncer.loop | offline every minute | 2 |" in text, text
+    assert "| tidy_app/inventory/service.py:send.fallback | the error is shown | 1 |" in text, text
+
+
 def test_suppression_comments_are_counted(project: Path) -> None:
     service = project / "tidy_app" / "inventory" / "service.py"
     original = service.read_text()
